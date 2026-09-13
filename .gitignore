@@ -1,0 +1,8 @@
+.env
+.env.local
+__pycache__/
+*.pyc
+web/backups/
+node_modules/
+.next/
+web/offline_queue.db

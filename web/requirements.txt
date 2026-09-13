@@ -1,0 +1,10 @@
+flask>=3.0
+deepface
+opencv-python
+scipy
+numpy
+pillow
+werkzeug
+tf-keras
+supabase
+python-dotenv

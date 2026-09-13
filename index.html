@@ -1,0 +1,1186 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SENATI | Control de Asistencia</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="static/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+
+<body>
+
+    <!-- CARNET DE CONFIRMACIÓN DE ESCANEO -->
+    <div class="carnet-toast hidden" id="carnetToast">
+        <div class="carnet-toast-photo">
+            <img id="carnetToastFoto" alt="">
+            <div class="carnet-toast-photo-fallback" id="carnetToastFallback"></div>
+        </div>
+        <div class="carnet-toast-info">
+            <span class="carnet-toast-nombre" id="carnetToastNombre"></span>
+            <span class="carnet-toast-msg" id="carnetToastMsg"></span>
+        </div>
+    </div>
+
+    <div class="app-shell">
+
+        <!-- ========== SIDEBAR ========== -->
+        <aside class="sidenav">
+            <div class="brand">
+                <div class="brand-icon">
+                    <img src="static/img/librari.png" alt="SENATI"
+                        onerror="this.style.display='none'">
+                </div>
+                <div class="brand-text">
+                    <div class="brand-title">SENATI</div>
+                    <div class="brand-subtitle">registro de asistencia vía sistema biométrico</div>
+                </div>
+            </div>
+
+            <div class="nav-section">ventanas</div>
+            <nav class="sidebar-nav" id="mainNav">
+                <a href="/" class="nav-item active" data-page="inicio">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                        <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                    </svg>
+                    <span>inicio</span>
+                </a>
+                <a href="/registros" class="nav-item" data-page="registros">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                        <line x1="16" y1="13" x2="8" y2="13"></line>
+                        <line x1="16" y1="17" x2="8" y2="17"></line>
+                    </svg>
+                    <span>registros</span>
+                </a>
+                <a href="/calendario" class="nav-item" data-page="calendario">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                        <line x1="16" y1="2" x2="16" y2="6"></line>
+                        <line x1="8" y1="2" x2="8" y2="6"></line>
+                        <line x1="3" y1="10" x2="21" y2="10"></line>
+                    </svg>
+                    <span>calendario</span>
+                </a>
+                <a href="/telefonos" class="nav-item" data-page="telefonos">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+                    </svg>
+                    <span>números telefónicos</span>
+                </a>
+            </nav>
+
+            <div class="nav-divider"></div>
+
+            <div class="nav-section">soporte</div>
+            <nav class="sidebar-nav">
+                <a href="/admin" class="nav-item" data-page="admin" data-admin-tab="personal">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="12" cy="7" r="4"></circle>
+                    </svg>
+                    <span>modo admin</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="info-card">
+                    <div class="info-card-icon">
+                        <img src="static/img/info.png" alt="info"
+                            onerror="this.style.display='none'">
+                    </div>
+                    <h4>DATOS REGISTRADOS EN EL SISTEMA BIOMÉTRICO</h4>
+                    <p>todos los datos se guardan automáticamente en el registro después de haber sido registrado/a</p>
+                </div>
+            </div>
+        </aside>
+
+        <!-- ========== MAIN ========== -->
+        <main class="main" id="mainContent">
+
+            <!-- ═══════════════════════════════════════
+           PÁGINA: INICIO
+           ═══════════════════════════════════════ -->
+            <section class="page" id="page-inicio" data-page="inicio">
+                <section class="camera-section">
+                    <div class="camera-area" id="cameraArea">
+                        <video id="video" autoplay playsinline muted style="display:none;"></video>
+                        <canvas id="canvas" style="display:none;"></canvas>
+                        <div class="camera-placeholder" id="cameraPlaceholder">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <path
+                                    d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z">
+                                </path>
+                                <circle cx="12" cy="13" r="4"></circle>
+                            </svg>
+                            <p>Cámara inactiva</p>
+                        </div>
+                        <div class="scan-overlay" id="scanOverlay" style="display:none;">
+                            <div class="scan-ring"></div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="recent-section">
+                    <div class="section-header">
+                        <h2 class="section-title">Registro recientes</h2>
+                        <div class="header-actions">
+                            <button class="btn btn-primary" id="btnEncender" onclick="encenderCamara()">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                    stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+                                    <path
+                                        d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z">
+                                    </path>
+                                    <circle cx="12" cy="13" r="4"></circle>
+                                </svg>
+                                <span>Encender</span>
+                            </button>
+                            <button class="btn btn-ghost" id="btnApagar" onclick="apagarCamara()" disabled>
+                                <span>Apagar</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="section-divider"></div>
+
+                    <div class="dashboard-grid">
+                        <div class="console-wrap">
+                            <h3 class="subsection-title">consola</h3>
+                            <div class="console-box" id="consoleBox">
+                                <div class="console-line">
+                                    <span class="console-time" id="scanTime">--:--:--</span>
+                                    <span>escaneando . . .</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="recientes-wrap">
+                            <h3 class="subsection-title">RECIENTES</h3>
+                            <div class="recientes-grid" id="recientesGrid"></div>
+                            <div class="empty-state" id="emptyRecientes">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="48"
+                                    height="48">
+                                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                                    <circle cx="9" cy="7" r="4"></circle>
+                                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                                    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                                </svg>
+                                <p>No hay registros recientes</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </section>
+
+            <!-- ═══════════════════════════════════════
+           PÁGINA: REGISTROS
+           ═══════════════════════════════════════ -->
+            <section class="page hidden" id="page-registros" data-page="registros">
+                <h1 class="page-title">registros</h1>
+
+                <div class="tabs-bar" id="registrosTabs">
+                    <button class="tab-btn active" data-tab="hoy">hoy</button>
+                    <button class="tab-btn" data-tab="historial">historial</button>
+                </div>
+
+                <div class="registros-toolbar">
+                    <div class="registros-search-wrap">
+                        <input type="search" id="regSearch" placeholder="buscar por nombre..." autocomplete="off">
+                        <div class="search-suggest hidden" id="regSearchSuggest"></div>
+                    </div>
+                    <select id="regFilterCargo">
+                        <option value="">filtrar por cargo</option>
+                        <option value="instructor">instructor</option>
+                        <option value="personal">personal</option>
+                    </select>
+                    <select id="regFilterCarrera">
+                        <option value="">filtrar por carrera</option>
+                    </select>
+                </div>
+
+                <div class="registros-list" id="registrosList"></div>
+                <div class="empty-col" id="emptyRegistrosList" style="display:none">
+                    <p>No hay registros</p>
+                </div>
+            </section>
+
+            <!-- ═══════════════════════════════════════
+           PÁGINA: CALENDARIO
+           ═══════════════════════════════════════ -->
+            <section class="page hidden" id="page-calendario" data-page="calendario">
+                <h1 class="page-title">calendario</h1>
+
+                <!-- Toolbar -->
+                <div class="cal-toolbar">
+                    <div class="cal-mes-nav">
+                        <button class="btn-icon" id="calPrevWeek" title="Semana anterior">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16"
+                                height="16">
+                                <polyline points="15 18 9 12 15 6"></polyline>
+                            </svg>
+                        </button>
+
+                        <!-- Selector de fecha desplegable -->
+                        <div class="date-picker-wrap">
+                            <button class="date-picker-trigger" id="datePickerTrigger">
+                                <span id="calMesAnio">Julio 2026</span>
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14"
+                                    height="14">
+                                    <polyline points="6 9 12 15 18 9"></polyline>
+                                </svg>
+                            </button>
+
+                            <div class="date-picker-backdrop" id="datePickerBackdrop"></div>
+                            <div class="date-picker-panel hidden" id="datePickerPanel">
+                                <div class="dp-header">
+                                    <button class="dp-nav-btn" id="dpPrevYear">‹</button>
+                                    <span class="dp-title" id="dpTitleYear">2026</span>
+                                    <button class="dp-nav-btn" id="dpNextYear">›</button>
+                                </div>
+
+                                <div class="dp-section">
+                                    <div class="dp-section-label">año</div>
+                                    <div class="dp-years" id="dpYears"></div>
+                                </div>
+
+                                <div class="dp-section">
+                                    <div class="dp-section-label">mes</div>
+                                    <div class="dp-months" id="dpMonths"></div>
+                                </div>
+
+                                <div class="dp-section">
+                                    <div class="dp-section-label">semana</div>
+                                    <div class="dp-weeks" id="dpWeeks"></div>
+                                </div>
+
+                                <div class="dp-footer">
+                                    <button class="btn btn-sm btn-ghost" id="dpHoy">hoy</button>
+                                    <button class="btn btn-sm btn-primary" id="dpAplicar">aplicar</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button class="btn-icon" id="calNextWeek" title="Semana siguiente">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16"
+                                height="16">
+                                <polyline points="9 18 15 12 9 6"></polyline>
+                            </svg>
+                        </button>
+                    </div>
+
+                    <div class="cal-filtros">
+                        <div class="cal-search-box">
+                            <input type="text" id="calSearch" placeholder="buscar nombre / id" autocomplete="off">
+                            <button class="btn-icon faceid-btn" id="calFaceIdBtn" title="Buscar por rostro">
+                                <img src="static/img/faceid.png" alt="faceid">
+                            </button>
+                        </div>
+                        <div class="dropdown-wrap">
+                            <button class="btn btn-sm" id="calFiltrar">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14"
+                                    height="14">
+                                    <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+                                </svg>
+                                filtrar
+                            </button>
+                            <div class="dropdown-menu dropdown-menu-wide hidden" id="calFiltroMenu"></div>
+                        </div>
+                        <div class="cal-rango" id="calRango">24 Jun - 30 Jun 2026</div>
+                    </div>
+                </div>
+
+                <!-- Grid -->
+                <div class="cal-grid-wrap">
+                    <div class="cal-dias-header" id="calDiasHeader">
+                        <div class="cal-hora-col"></div>
+                        <!-- días generados por JS -->
+                    </div>
+                    <div class="cal-body" id="calBody">
+                        <!-- filas generadas por JS -->
+                    </div>
+                </div>
+
+                <!-- Modal FaceID -->
+                <div class="modal-overlay hidden" id="faceIdModal">
+                    <div class="modal-card faceid-modal">
+                        <div class="modal-drag-bar"><h3>Buscar por reconocimiento facial</h3></div>
+                        <div class="faceid-preview" id="faceIdPreview">
+                            <video id="faceIdVideo" autoplay playsinline muted style="display:none;"></video>
+                            <canvas id="faceIdCanvas" style="display:none;"></canvas>
+                            <div class="faceid-frame" id="faceIdFrame">
+                                <div class="faceid-frame-inner"></div>
+                            </div>
+                            <div class="faceid-placeholder" id="faceIdPlaceholder">
+                                <img src="static/img/faceid.png" alt="faceid">
+                                <p>Acerca tu rostro a la cámara</p>
+                            </div>
+                        </div>
+                        <div class="faceid-result hidden" id="faceIdResult">
+                            <div class="faceid-result-avatar" id="faceIdResultAvatar"></div>
+                            <div class="faceid-result-text" id="faceIdResultText"></div>
+                        </div>
+                        <div class="modal-actions">
+                            <button class="btn btn-primary" id="btnFaceIdScan">Escanear</button>
+                            <button class="btn btn-ghost" id="btnFaceIdClose">Cerrar</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tooltip Carnet -->
+                <div class="carnet-tooltip hidden" id="carnetTooltip">
+                    <div class="carnet-header">
+                        <div class="carnet-avatar" id="carnetAvatar"></div>
+                        <div>
+                            <div class="carnet-name" id="carnetName"></div>
+                            <div class="carnet-id" id="carnetId"></div>
+                        </div>
+                    </div>
+                    <div class="carnet-body">
+                        <span id="carnetCarrera"></span>
+                        <span id="carnetEntrada"></span>
+                        <span id="carnetSalida"></span>
+                        <span id="carnetTardanzas"></span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ═══════════════════════════════════════
+           PÁGINA: ADMIN
+           ═══════════════════════════════════════ -->
+            <!-- ═══════════════════════════════════════
+           PÁGINA: NÚMEROS TELEFÓNICOS
+           ═══════════════════════════════════════ -->
+            <section class="page hidden" id="page-telefonos" data-page="telefonos">
+                <h1 class="page-title">números telefónicos</h1>
+                <div class="registros-toolbar">
+                    <div class="registros-search-wrap">
+                        <input type="search" id="telSearch" placeholder="buscar por nombre..." autocomplete="off">
+                    </div>
+                    <select id="telFilterCargo">
+                        <option value="">filtrar por cargo</option>
+                        <option value="instructor">instructor</option>
+                        <option value="personal">personal</option>
+                        <option value="jefe">jefe</option>
+                    </select>
+                    <select id="telFilterCarrera">
+                        <option value="">filtrar por carrera</option>
+                    </select>
+                </div>
+                <div class="telefonos-grid" id="telefonosGrid"></div>
+                <div class="empty-col" id="emptyTelefonos" style="display:none">
+                    <p>No hay personal registrado</p>
+                </div>
+            </section>
+
+            <section class="page hidden" id="page-admin" data-page="admin">
+
+                <!-- LOGIN ADMIN -->
+                <div class="admin-login" id="adminLogin">
+                    <div class="login-card">
+                        <div class="login-icon">
+                            <img src="static/img/conr.png" alt="lock"
+                                onerror="this.style.display='none'">
+                        </div>
+                        <h2>acceso restringido</h2>
+                        <p>ingresa la contraseña de administrador para continuar</p>
+                        <div class="login-input-wrap">
+                            <input type="password" id="adminPass" placeholder="contraseña" maxlength="20"
+                                autocomplete="off">
+                            <button class="btn btn-primary" id="btnAdminLogin">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16"
+                                    height="16">
+                                    <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
+                                    <polyline points="10 17 15 12 10 7"></polyline>
+                                    <line x1="15" y1="12" x2="3" y2="12"></line>
+                                </svg>
+                                ingresar
+                            </button>
+                        </div>
+                        <div class="login-error hidden" id="loginError">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14"
+                                height="14">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <line x1="12" y1="8" x2="12" y2="12"></line>
+                                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                            </svg>
+                            contraseña incorrecta
+                        </div>
+                    </div>
+                </div>
+
+                <!-- DASHBOARD ADMIN -->
+                <div class="admin-dashboard hidden" id="adminDashboard">
+                    <div class="admin-header">
+                        <div class="admin-header-left">
+                            <h1 class="page-title">modo admin</h1>
+                            <nav class="admin-tabs" id="adminTabs">
+                                <button class="admin-tab active" data-admin-tab="personal">personal</button>
+                                <button class="admin-tab" data-admin-tab="agregar">agregar</button>
+                                <button class="admin-tab" data-admin-tab="reportes">reportes</button>
+                                <button class="admin-tab" data-admin-tab="config">configuración</button>
+                                <button class="admin-tab" data-admin-tab="horario">horario</button>
+                                <button class="admin-tab" data-admin-tab="reparacion">reparación</button>
+                            </nav>
+                        </div>
+                        <button class="btn btn-ghost btn-sm" id="btnAdminLogout">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14"
+                                height="14">
+                                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                                <polyline points="16 17 21 12 16 7"></polyline>
+                                <line x1="21" y1="12" x2="9" y2="12"></line>
+                            </svg>
+                            cerrar sesión
+                        </button>
+                    </div>
+
+                    <!-- PANEL: PERSONAL -->
+                    <div class="admin-panel" id="panel-personal">
+                        <div class="admin-toolbar">
+                            <div class="toolbar-group">
+                                <div class="search-box">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                        width="14" height="14">
+                                        <circle cx="11" cy="11" r="8"></circle>
+                                        <path d="m21 21-4.3-4.3"></path>
+                                    </svg>
+                                    <input type="text" id="adminSearch" placeholder="buscar nombre / dni / carrera"
+                                        autocomplete="off">
+                                </div>
+                                <select id="adminFilterTipo">
+                                    <option value="">todos los tipos</option>
+                                    <option value="instructor">instructor</option>
+                                    <option value="personal">personal</option>
+                                    <option value="jefe">jefe</option>
+                                </select>
+                                <select id="adminFilterArea">
+                                    <option value="">todas las carreras</option>
+                                </select>
+                            </div>
+                            <div class="toolbar-stats" id="adminStats">
+                                <span class="stat-pill"><strong id="statTotal">0</strong> total</span>
+                                <span class="stat-pill active"><strong id="statActivos">0</strong> activos</span>
+                                <span class="stat-pill inactive"><strong id="statInactivos">0</strong> inactivos</span>
+                                <button class="btn btn-primary btn-sm" id="btnIrAgregar">+ agregar</button>
+                            </div>
+                        </div>
+
+                        <div class="table-wrap">
+                            <table class="admin-table" id="tablaPersonal">
+                                <thead>
+                                    <tr>
+                                        <th class="col-foto">foto</th>
+                                        <th class="col-nombre">nombre</th>
+                                        <th class="col-dni">dni</th>
+                                        <th class="col-codigo">id</th>
+                                        <th class="col-tipo">tipo</th>
+                                        <th class="col-area">carrera</th>
+                                        <th class="col-cargo">cargo</th>
+                                        <th class="col-estado">estado</th>
+                                        <th class="col-acciones">acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                            <div class="empty-state hidden" id="emptyPersonal">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="48"
+                                    height="48">
+                                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                                    <circle cx="9" cy="7" r="4"></circle>
+                                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                                    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                                </svg>
+                                <p>no se encontró personal</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- PANEL: AGREGAR -->
+                    <div class="admin-panel hidden" id="panel-agregar">
+                        <form class="admin-form" id="formAgregar" autocomplete="off">
+                            <div class="form-grid">
+                                <div class="form-col">
+                                    <div class="form-group">
+                                        <label>nombre completo <span class="req">*</span></label>
+                                        <input type="text" name="nombre" id="agNombre"
+                                            placeholder="ej: Juan Pérez García" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>DNI <span class="req">*</span></label>
+                                        <input type="text" name="dni" id="agDni" placeholder="12345678" maxlength="8"
+                                            required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>correo <span class="hint-inline">(opcional)</span></label>
+                                        <input type="email" name="correo" id="agCorreo" placeholder="ej: nombre@senati.pe">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>número telefónico <span class="hint-inline">(opcional)</span></label>
+                                        <input type="tel" name="telefono" id="agTelefono" placeholder="ej: 999888777" maxlength="15">
+                                    </div>
+                                    <div class="form-group" id="wrapCodigo">
+                                        <label id="lblCodigo">ID / código de personal <span class="req"
+                                                id="reqCodigo">*</span></label>
+                                        <input type="text" id="agCodigo" placeholder="ej: 001664273" maxlength="20">
+                                        <p class="hint-inline" id="hintCodigo" style="display:none;">opcional — puedes
+                                            dejarlo en blanco si no aplica.</p>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>tipo de personal <span class="req">*</span></label>
+                                        <select name="tipo_personal" id="agTipo" required>
+                                            <option value="" disabled selected>seleccionar...</option>
+                                            <option value="instructor">instructor</option>
+                                            <option value="personal">personal</option>
+                                            <option value="jefe">jefe</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group" id="wrapArea">
+                                        <label>carrera <span class="req">*</span></label>
+                                        <select name="area" id="agArea" required>
+                                            <option value="" disabled selected>seleccionar carrera...</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group hidden" id="wrapCurso">
+                                        <label>carrera a cargo</label>
+                                        <select name="curso" id="agCurso">
+                                            <option value="" disabled selected>seleccionar carrera a cargo...</option>
+                                        </select>
+                                    </div>
+                                    <!-- semestre se define por bloque de horario, no al crear el usuario -->
+                                    <div class="form-group hidden" id="wrapCargo">
+                                        <label>tipo de personal (función) <span class="req">*</span></label>
+                                        <input type="text" id="agCargo" placeholder="ej: limpieza">
+                                    </div>
+                                </div>
+
+                                <div class="form-col">
+                                    <div class="form-group">
+                                        <label>fotografía facial <span class="req">*</span></label>
+                                        <div class="camera-box" id="adminCameraBox">
+                                            <video id="adminVideo" autoplay playsinline muted
+                                                style="display:none;"></video>
+                                            <canvas id="adminCanvas" style="display:none;"></canvas>
+                                            <div class="camera-box-placeholder" id="adminCamPlaceholder">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                                    stroke-width="1.5" width="40" height="40">
+                                                    <path
+                                                        d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z">
+                                                    </path>
+                                                    <circle cx="12" cy="13" r="4"></circle>
+                                                </svg>
+                                                <p>cámara inactiva</p>
+                                                <p class="camera-box-hint">o arrastra una foto aquí</p>
+                                            </div>
+                                            <div class="face-guide" id="adminFaceGuide" style="display:none;">
+                                                <div class="face-guide-inner"></div>
+                                            </div>
+                                        </div>
+                                        <div class="camera-actions">
+                                            <button type="button" class="btn btn-sm" id="btnAdminCamOn"
+                                                onclick="adminCamEncender()">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                                    stroke-width="2" width="14" height="14">
+                                                    <path
+                                                        d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z">
+                                                    </path>
+                                                    <circle cx="12" cy="13" r="4"></circle>
+                                                </svg>
+                                                encender
+                                            </button>
+                                            <button type="button" class="btn btn-sm btn-primary" id="btnAdminCapturar"
+                                                onclick="adminCamCapturar()" disabled>
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                                    stroke-width="2" width="14" height="14">
+                                                    <circle cx="12" cy="12" r="10"></circle>
+                                                    <circle cx="12" cy="12" r="3"></circle>
+                                                </svg>
+                                                capturar
+                                            </button>
+                                            <button type="button" class="btn btn-sm btn-ghost" id="btnAdminCamOff"
+                                                onclick="adminCamApagar()" disabled>
+                                                apagar
+                                            </button>
+                                        </div>
+                                        <input type="file" id="agFotoFile" accept="image/*" style="display:none;">
+                                        <button type="button" class="btn btn-sm btn-ghost"
+                                            style="margin-top:8px;width:100%;" onclick="$('#agFotoFile').click()">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                                width="14" height="14">
+                                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                                <polyline points="17 8 12 3 7 8"></polyline>
+                                                <line x1="12" y1="3" x2="12" y2="15"></line>
+                                            </svg>
+                                            o subir foto desde archivo
+                                        </button>
+                                    </div>
+                                    <div class="form-preview hidden" id="agPreviewWrap">
+                                        <label>vista previa</label>
+                                        <img id="agPreviewImg" alt="preview">
+                                    </div>
+
+                                    <div class="form-group" style="margin-top:18px;">
+                                        <label>ícono de perfil <span class="hint-inline">(opcional, para la lista de
+                                                personal)</span></label>
+                                        <div class="icon-box" id="adminIconBox">
+                                            <img id="agIconPreview" class="hidden" alt="ícono">
+                                            <div class="icon-box-placeholder" id="adminIconPlaceholder">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                                    stroke-width="1.5" width="28" height="28">
+                                                    <rect x="3" y="3" width="18" height="18" rx="4"></rect>
+                                                    <circle cx="9" cy="10" r="2"></circle>
+                                                    <path d="m21 15-5-5L5 21"></path>
+                                                </svg>
+                                                <p>sin ícono</p>
+                                            </div>
+                                        </div>
+                                        <input type="file" id="agIconFile" accept="image/*" style="display:none;">
+                                        <button type="button" class="btn btn-sm btn-ghost"
+                                            style="margin-top:8px;width:100%;" onclick="$('#agIconFile').click()">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                                width="14" height="14">
+                                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                                <polyline points="17 8 12 3 7 8"></polyline>
+                                                <line x1="12" y1="3" x2="12" y2="15"></line>
+                                            </svg>
+                                            examinar archivos
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-footer">
+                                <button type="button" class="btn btn-ghost"
+                                    onclick="resetFormAgregar()">limpiar</button>
+                                <button type="submit" class="btn btn-primary" id="btnGuardarPersonal">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                        width="16" height="16">
+                                        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z">
+                                        </path>
+                                        <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                                        <polyline points="7 3 7 8 15 8"></polyline>
+                                    </svg>
+                                    guardar personal
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- PANEL: REPORTES -->
+                    <div class="admin-panel hidden" id="panel-reportes">
+                        <div class="reportes-toolbar">
+                            <div class="reportes-filtros">
+                                <input type="date" id="repFechaInicio">
+                                <span style="color:var(--text-muted)">hasta</span>
+                                <input type="date" id="repFechaFin">
+                                <select id="repTipo">
+                                    <option value="">todos los tipos</option>
+                                    <option value="entrada">entradas</option>
+                                    <option value="salida">salidas</option>
+                                </select>
+                                <button class="btn btn-sm btn-primary" id="btnGenerarReporte">generar</button>
+                            </div>
+                            <div class="reportes-actions">
+                                <button class="btn btn-sm" id="btnExportCsv">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                        width="14" height="14">
+                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                        <polyline points="7 10 12 15 17 10"></polyline>
+                                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                                    </svg>
+                                    exportar CSV
+                                </button>
+                            </div>
+                        </div>
+                        <div class="reportes-resumen" id="repResumen">
+                            <div class="resumen-card">
+                                <span class="resumen-val" id="resTotal">0</span>
+                                <span class="resumen-label">total registros</span>
+                            </div>
+                            <div class="resumen-card">
+                                <span class="resumen-val" id="resEntradas">0</span>
+                                <span class="resumen-label">entradas</span>
+                            </div>
+                            <div class="resumen-card">
+                                <span class="resumen-val" id="resSalidas">0</span>
+                                <span class="resumen-label">salidas</span>
+                            </div>
+                            <div class="resumen-card">
+                                <span class="resumen-val" id="resTardanzas">0</span>
+                                <span class="resumen-label">tardanzas</span>
+                            </div>
+                        </div>
+                        <div class="dashboard-charts">
+                            <div class="chart-card">
+                                <h3>asistencia por carrera (30 días)</h3>
+                                <canvas id="chartCarrera" height="220"></canvas>
+                            </div>
+                            <div class="chart-card">
+                                <h3>movimientos por día de semana</h3>
+                                <canvas id="chartDia" height="220"></canvas>
+                            </div>
+                        </div>
+                        <div class="table-wrap">
+                            <table class="admin-table" id="tablaReportes">
+                                <thead>
+                                    <tr>
+                                        <th>fecha</th>
+                                        <th>nombre</th>
+                                        <th>tipo</th>
+                                        <th>hora</th>
+                                        <th>confianza</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                            <div class="empty-state hidden" id="emptyReportes">
+                                <p>no hay registros para el rango seleccionado</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- PANEL: CONFIGURACIÓN -->
+                    <div class="admin-panel hidden" id="panel-config">
+                        <div class="config-grid">
+                            <!-- horario laboral global eliminado: cada persona sube su horario en PDF -->
+
+                            <div class="config-card">
+                                <h3>sistema biométrico</h3>
+                                <div class="config-row">
+                                    <label>umbral de confianza</label>
+                                    <div class="slider-wrap">
+                                        <input type="range" id="cfgUmbral" min="50" max="99" value="85">
+                                        <span id="cfgUmbralVal">85%</span>
+                                    </div>
+                                </div>
+                                <div class="config-row">
+                                    <label>intervalo de escaneo (seg)</label>
+                                    <input type="number" id="cfgIntervalo" value="2.5" min="1" max="10" step="0.5">
+                                </div>
+                                <div class="config-row">
+                                    <label>tiempo de espera entre registros (seg)</label>
+                                    <input type="number" id="cfgEspera" value="5" min="1" max="60">
+                                </div>
+                                <button class="btn btn-primary" style="margin-top:16px;width:100%;"
+                                    id="btnGuardarSistema">guardar configuración</button>
+                            </div>
+
+                            <div class="config-card wide">
+                                <h3>gestión de carreras</h3>
+                                <div class="areas-list" id="areasList">
+                                    <!-- carreras renderizadas por JS -->
+                                </div>
+                                <div class="areas-add">
+                                    <input type="text" id="newAreaName" placeholder="nueva carrera...">
+                                    <button class="btn btn-sm btn-primary" id="btnAddArea">agregar</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- PANEL: HORARIO -->
+                    <div class="admin-panel hidden" id="panel-horario">
+                        <div class="admin-toolbar">
+                            <div class="toolbar-group">
+                                <div class="search-box">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                                        <circle cx="11" cy="11" r="8"></circle>
+                                        <path d="m21 21-4.3-4.3"></path>
+                                    </svg>
+                                    <input type="search" id="horarioSearch" placeholder="buscar por nombre..." autocomplete="off">
+                                </div>
+                                <select id="horarioFilterTipo">
+                                    <option value="">todos los tipos</option>
+                                    <option value="instructor">instructor</option>
+                                    <option value="personal">personal</option>
+                                    <option value="jefe">jefe</option>
+                                </select>
+                                <select id="horarioFilterArea">
+                                    <option value="">todas las carreras</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="table-wrap">
+                            <table class="data-table" id="tablaHorarioPersonal">
+                                <thead>
+                                    <tr>
+                                        <th>foto</th>
+                                        <th>nombre</th>
+                                        <th>tipo</th>
+                                        <th>carrera</th>
+                                        <th>bloques</th>
+                                        <th>acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                            <div class="empty-col" id="emptyHorarioPersonal" style="display:none">
+                                <p>No hay personal</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- PANEL: REPARACIÓN -->
+                    <div class="admin-panel hidden" id="panel-reparacion">
+                        <div class="repair-grid">
+                            <div class="config-card wide">
+                                <div class="repair-card-head">
+                                    <h3>revisión de estado</h3>
+                                    <div class="repair-card-actions">
+                                        <button class="btn btn-sm btn-ghost" id="btnCrearBackup">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                                width="14" height="14">
+                                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                                <polyline points="7 10 12 15 17 10"></polyline>
+                                                <line x1="12" y1="15" x2="12" y2="3"></line>
+                                            </svg>
+                                            crear copia de seguridad
+                                        </button>
+                                        <button class="btn btn-sm" id="btnRevisarEstado">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                                width="14" height="14">
+                                                <path d="M23 4v6h-6"></path>
+                                                <path d="M1 20v-6h6"></path>
+                                                <path
+                                                    d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15">
+                                                </path>
+                                            </svg>
+                                            revisar estado
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="diag-grid" id="diagGrid">
+                                    <div class="diag-card" data-diag="camara">
+                                        <span class="diag-dot"></span>
+                                        <div>
+                                            <strong>cámara</strong>
+                                            <p>sin verificar</p>
+                                        </div>
+                                    </div>
+                                    <div class="diag-card" data-diag="base_datos">
+                                        <span class="diag-dot"></span>
+                                        <div>
+                                            <strong>base de datos</strong>
+                                            <p>sin verificar</p>
+                                        </div>
+                                    </div>
+                                    <div class="diag-card" data-diag="modelo">
+                                        <span class="diag-dot"></span>
+                                        <div>
+                                            <strong>modelo de reconocimiento</strong>
+                                            <p>sin verificar</p>
+                                        </div>
+                                    </div>
+                                    <div class="diag-card" data-diag="backup">
+                                        <span class="diag-dot"></span>
+                                        <div>
+                                            <strong>último backup</strong>
+                                            <p id="diagBackupTxt">sin registrar</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="config-card wide">
+                                <h3>cambiar contraseña de administrador</h3>
+                                <div class="password-grid">
+                                    <div class="config-row">
+                                        <label>contraseña actual</label>
+                                        <input type="password" id="pwActual" placeholder="contraseña actual"
+                                            maxlength="30" autocomplete="off" style="width:220px;">
+                                    </div>
+                                    <div class="config-row">
+                                        <label>nueva contraseña</label>
+                                        <input type="password" id="pwNueva" placeholder="mínimo 6 caracteres"
+                                            maxlength="30" autocomplete="off" style="width:220px;">
+                                    </div>
+                                    <div class="config-row">
+                                        <label>confirmar nueva contraseña</label>
+                                        <input type="password" id="pwConfirmar" placeholder="repite la contraseña"
+                                            maxlength="30" autocomplete="off" style="width:220px;">
+                                    </div>
+                                </div>
+
+                                <div class="confirm-slider-wrap" id="pwSliderWrap">
+                                    <label>desliza hasta el final para confirmar el cambio</label>
+                                    <input type="range" id="pwSlider" min="0" max="100" value="0" step="1">
+                                    <div class="confirm-slider-track">
+                                        <div class="confirm-slider-fill pw-fill" id="pwSliderFill"></div>
+                                        <span id="pwSliderTxt">desliza para confirmar →</span>
+                                    </div>
+                                </div>
+
+                                <button class="btn btn-primary" id="btnCambiarPassword" style="margin-top:16px;"
+                                    disabled>
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                        width="16" height="16">
+                                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                                        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                                    </svg>
+                                    actualizar contraseña
+                                </button>
+                                <p class="repair-status" id="pwEstadoTxt"></p>
+                            </div>
+
+                            <div class="config-card wide danger-zone">
+                                <h3 class="danger-title">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                        width="16" height="16">
+                                        <path
+                                            d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z">
+                                        </path>
+                                        <line x1="12" y1="9" x2="12" y2="13"></line>
+                                        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                                    </svg>
+                                    zona de peligro — formatear base de datos
+                                </h3>
+                                <p class="danger-desc">esto elimina permanentemente todo el personal, fotos,
+                                    registros de asistencia y justificaciones. no se puede deshacer.</p>
+
+                                <div class="config-row">
+                                    <label>contraseña de administrador</label>
+                                    <input type="password" id="repPassword" placeholder="contraseña" maxlength="30"
+                                        autocomplete="off" style="width:220px;">
+                                </div>
+
+                                <div class="confirm-slider-wrap" id="repSliderWrap">
+                                    <label>desliza hasta el final para habilitar el formateo</label>
+                                    <input type="range" id="repSlider" min="0" max="100" value="0" step="1">
+                                    <div class="confirm-slider-track">
+                                        <div class="confirm-slider-fill" id="repSliderFill"></div>
+                                        <span id="repSliderTxt">desliza para confirmar →</span>
+                                    </div>
+                                </div>
+
+                                <button class="btn btn-danger" id="btnFormatearBD" style="margin-top:16px;" disabled>
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                        width="16" height="16">
+                                        <polyline points="3 6 5 6 21 6"></polyline>
+                                        <path
+                                            d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2">
+                                        </path>
+                                    </svg>
+                                    formatear base de datos por completo
+                                </button>
+                                <p class="repair-status" id="repEstadoTxt"></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MODAL: USAR FOTO COMO ÍCONO -->
+                <div class="modal-overlay hidden" id="modalUsarIcono">
+                    <div class="modal-card modal-card-lg">
+                        <div class="modal-drag-bar"><h3>¿usar esta foto como ícono de perfil?</h3></div>
+                        <p>el sistema guarda dos imágenes distintas para cada persona:</p>
+                        <ul class="modal-list">
+                            <li><strong>fotografía facial</strong>: se usa únicamente para que la cámara reconozca el
+                                rostro y registre la entrada o salida.</li>
+                            <li><strong>ícono de perfil</strong>: es la imagen pequeña que aparece en la lista de
+                                personal, en reportes y en el calendario, para identificar rápido a cada persona.</li>
+                        </ul>
+                        <p>puedes usar la misma fotografía que acabas de capturar también como ícono, para no tener
+                            que subir una imagen aparte. Si prefieres una foto distinta (más profesional o con mejor
+                            encuadre), puedes subir otra desde el cuadro de "ícono de perfil".</p>
+                        <div class="modal-actions">
+                            <button class="btn btn-ghost" id="btnNoUsarIcono">subiré otra imagen</button>
+                            <button class="btn btn-primary" id="btnSiUsarIcono">sí, usar esta foto</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MODAL: CONFIRMAR ELIMINAR -->
+                <div class="modal-overlay hidden" id="modalEliminar">
+                    <div class="modal-card">
+                        <div class="modal-drag-bar"><h3>¿eliminar personal?</h3></div>
+                        <p id="txtEliminar">esta acción no se puede deshacer.</p>
+                        <div class="modal-actions">
+                            <button class="btn btn-ghost" id="btnCancelEliminar">cancelar</button>
+                            <button class="btn btn-danger" id="btnConfirmEliminar">eliminar</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MODAL: VER DETALLE -->
+                <div class="modal-overlay hidden" id="modalDetalle">
+                    <div class="modal-card detalle-card detalle-horizontal">
+                        <div class="modal-drag-bar"><h3>detalle de personal</h3></div>
+                        <div class="detalle-header">
+                            <div class="detalle-avatar" id="detAvatar"></div>
+                            <div>
+                                <h3 id="detNombre"></h3>
+                                <p id="detMeta"></p>
+                            </div>
+                        </div>
+                        <div class="detalle-body" id="detBody"></div>
+                        <div class="modal-actions">
+                            <button class="btn btn-ghost" onclick="cerrarModal('modalDetalle')">cerrar</button>
+                            <button class="btn btn-primary" id="btnEditarDesdeDetalle">editar datos</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MODAL: EDITOR DE HORARIO -->
+                <div class="modal-overlay hidden" id="modalHorarioEditor">
+                    <div class="modal-card modal-card-xl">
+                        <div class="modal-drag-bar"><h3 id="horarioEditorTitulo">horario semanal</h3></div>
+                        <p class="hint-inline">Define bloques de clase. Tolerancia de entrada: 5 min después de la hora de inicio. Si hay otra clase seguida, la salida y la nueva entrada se evalúan por separado.</p>
+                        <input type="hidden" id="horarioEditorPersonalId">
+
+                        <div class="ia-import-box" id="iaImportBox">
+                            <div class="ia-import-head">
+                                <strong>Importar con IA</strong>
+                                <span class="hint-inline" id="iaEstadoLabel">Gemini</span>
+                            </div>
+                            <p class="hint-inline">Sube una captura o foto del horario (PNG/JPG). La IA detecta días, horas, materia, salón, carrera y semestre.</p>
+                            <input type="file" id="iaHorarioFile" accept="image/*,.pdf,application/pdf" style="display:none;">
+                            <div class="ia-import-actions">
+                                <button type="button" class="btn btn-sm btn-primary" id="btnIaElegirArchivo">elegir imagen / PDF</button>
+                                <label class="hint-inline" style="display:flex;align-items:center;gap:6px;">
+                                    <input type="checkbox" id="iaReemplazar"> reemplazar bloques actuales
+                                </label>
+                            </div>
+                            <p class="hint-inline" id="iaHorarioNombre">ningún archivo</p>
+                            <button type="button" class="btn btn-sm" id="btnIaImportar" disabled>analizar e importar</button>
+                            <p class="hint-inline" id="iaImportMsg" style="margin-top:8px;"></p>
+                        </div>
+
+                        <div id="horarioEditorLista" class="horario-editor-lista"></div>
+                        <div class="horario-editor-form">
+                            <select id="heDia">
+                                <option value="0">lunes</option>
+                                <option value="1">martes</option>
+                                <option value="2">miércoles</option>
+                                <option value="3">jueves</option>
+                                <option value="4">viernes</option>
+                                <option value="5">sábado</option>
+                                <option value="6">domingo</option>
+                            </select>
+                            <input type="time" id="heInicio" value="07:30">
+                            <span class="hint-inline">→</span>
+                            <input type="time" id="heFin" value="12:45">
+                            <input type="text" id="heMateria" placeholder="materia (opcional)">
+                            <input type="text" id="heAula" placeholder="salón / aula">
+                            <select id="heCarrera" title="carrera">
+                                <option value="">carrera...</option>
+                            </select>
+                            <select id="heSemestre" title="semestre">
+                                <option value="">semestre...</option>
+                                <option value="1">1er</option>
+                                <option value="2">2do</option>
+                                <option value="3">3er</option>
+                            </select>
+                            <input type="number" id="heTolerancia" value="5" min="0" max="60" title="tolerancia min">
+                            <button type="button" class="btn btn-sm btn-primary" id="btnAgregarBloqueHorario">agregar bloque</button>
+                        </div>
+                        <div class="modal-actions">
+                            <button class="btn btn-ghost" type="button" id="btnExportHorarioPdf">exportar PDF</button>
+                            <button class="btn btn-ghost" onclick="cerrarModal('modalHorarioEditor')">cerrar</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MODAL: EDITAR PERSONAL -->
+                <div class="modal-overlay hidden" id="modalEditar">
+                    <div class="modal-card modal-card-lg">
+                        <div class="modal-drag-bar"><h3>editar datos de personal</h3></div>
+                        <form id="formEditar">
+                            <input type="hidden" id="editId">
+                            <div class="form-group">
+                                <label>nombre completo <span class="req">*</span></label>
+                                <input type="text" id="editNombre" required>
+                            </div>
+                            <div class="form-group">
+                                <label>DNI <span class="req">*</span></label>
+                                <input type="text" id="editDni" maxlength="8" required>
+                            </div>
+                            <div class="form-group" id="wrapEditCodigo">
+                                <label id="lblEditCodigo">ID / código de personal <span class="req"
+                                        id="reqEditCodigo">*</span></label>
+                                <input type="text" id="editCodigo" maxlength="20">
+                                <p class="hint-inline" id="hintEditCodigo" style="display:none;">opcional — puedes
+                                    dejarlo en blanco si no aplica.</p>
+                            </div>
+                            <div class="form-group">
+                                <label>tipo de personal <span class="req">*</span></label>
+                                <select id="editTipo" required>
+                                    <option value="instructor">instructor</option>
+                                    <option value="personal">personal</option>
+                                    <option value="jefe">jefe</option>
+                                </select>
+                            </div>
+                            <div class="form-group" id="wrapEditArea">
+                                <label>carrera <span class="req">*</span></label>
+                                <select id="editArea" required></select>
+                            </div>
+                            <div class="form-group hidden" id="wrapEditCurso">
+                                <label>carrera a cargo</label>
+                                <select id="editCurso"></select>
+                            </div>
+                            <div class="form-group hidden" id="wrapEditSemestre">
+                                <label>semestre</label>
+                                <select id="editSemestre">
+                                    <option value="">seleccionar semestre...</option>
+                                    <option value="1">1er semestre</option>
+                                    <option value="2">2do semestre</option>
+                                    <option value="3">3er semestre</option>
+                                    <option value="4">4to semestre</option>
+                                    <option value="5">5to semestre</option>
+                                    <option value="6">6to semestre</option>
+                                </select>
+                            </div>
+                            <div class="form-group hidden" id="wrapEditCargo">
+                                <label>tipo de personal (función) <span class="req">*</span></label>
+                                <input type="text" id="editCargo" placeholder="ej: limpieza">
+                            </div>
+                            <p class="hint-inline" style="display:block;margin-top:4px;">para volver a capturar el
+                                rostro o cambiar el ícono, elimina este registro y créalo de nuevo desde "agregar".</p>
+                        </form>
+
+                        <div class="horario-section">
+                            <h4>horario semanal (bloques)</h4>
+                            <p class="hint-inline" style="display:block;">un instructor puede tener varios bloques el
+                                mismo día (ej: 08:00–10:00 y luego 16:00–18:00). el sistema compara cada marcación
+                                contra el bloque correspondiente, no contra una sola hora fija.</p>
+
+                            <div class="horario-list" id="horarioList"></div>
+
+                            <div class="horario-form">
+                                <select id="hbDia">
+                                    <option value="0">lunes</option>
+                                    <option value="1">martes</option>
+                                    <option value="2">miércoles</option>
+                                    <option value="3">jueves</option>
+                                    <option value="4">viernes</option>
+                                    <option value="5">sábado</option>
+                                    <option value="6">domingo</option>
+                                </select>
+                                <input type="time" id="hbInicio" value="08:00">
+                                <input type="time" id="hbFin" value="10:00">
+                                <input type="text" id="hbMateria" placeholder="materia (opcional)">
+                                <button type="button" class="btn btn-sm" id="btnAgregarBloque">agregar bloque</button>
+                            </div>
+                            <p class="repair-status" id="hbEstado"></p>
+                        </div>
+
+                        <div class="modal-actions">
+                            <button class="btn btn-ghost" type="button"
+                                onclick="cerrarModal('modalEditar')">cancelar</button>
+                            <button class="btn btn-primary" id="btnGuardarEdicion">guardar cambios</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <script src="static/js/app.js"></script>
+</body>
+
+</html>

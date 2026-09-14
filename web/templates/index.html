@@ -711,15 +711,25 @@
                                 <button class="btn btn-sm btn-primary" id="btnGenerarReporte">generar</button>
                             </div>
                             <div class="reportes-actions">
-                                <button class="btn btn-sm" id="btnExportCsv">
+                                <button class="btn btn-sm" id="btnExportCsv" type="button">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                                         width="14" height="14">
                                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                                         <polyline points="7 10 12 15 17 10"></polyline>
                                         <line x1="12" y1="15" x2="12" y2="3"></line>
                                     </svg>
-                                    exportar CSV
+                                    exportar Excel
                                 </button>
+                                <div class="rep-delete-panel">
+                                    <button class="btn btn-sm btn-danger-soft" id="btnModoEliminar" type="button">
+                                        eliminar reportes
+                                    </button>
+                                    <div class="rep-delete-submenu hidden" id="repDeleteSubmenu">
+                                        <button type="button" class="rep-sub-btn" id="btnModoMulti">selección múltiple</button>
+                                        <button type="button" class="rep-sub-btn hidden" id="btnEliminarSeleccionados">eliminar seleccionados</button>
+                                        <button type="button" class="rep-sub-btn muted" id="btnCancelarEliminar">cancelar</button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         <div class="reportes-resumen" id="repResumen">
@@ -750,15 +760,17 @@
                                 <canvas id="chartDia" height="220"></canvas>
                             </div>
                         </div>
-                        <div class="table-wrap">
-                            <table class="admin-table" id="tablaReportes">
+                        <div class="table-wrap reportes-table-wrap">
+                            <table class="admin-table" id="tablaReportes" data-delete-mode="off">
                                 <thead>
                                     <tr>
+                                        <th class="col-check hidden" style="width:40px"><input type="checkbox" id="repSelectAll" title="seleccionar todos"></th>
                                         <th>fecha</th>
                                         <th>nombre</th>
                                         <th>tipo</th>
                                         <th>hora</th>
                                         <th>confianza</th>
+                                        <th class="col-acciones hidden">acciones</th>
                                     </tr>
                                 </thead>
                                 <tbody></tbody>
@@ -1020,6 +1032,25 @@
                 </div>
 
                 <!-- MODAL: CONFIRMAR ELIMINAR -->
+
+                <div class="modal-overlay hidden" id="modalSiguienteClase">
+                    <div class="modal-card modal-card-lg">
+                        <h3>siguiente clase</h3>
+                        <p class="hint-inline" id="scMensaje">¿Marcar entrada anticipada?</p>
+                        <div class="sc-info" id="scInfo">
+                            <div class="sc-row"><span>horario</span><strong id="scHorario">—</strong></div>
+                            <div class="sc-row"><span>materia</span><strong id="scMateria">—</strong></div>
+                            <div class="sc-row"><span>salón</span><strong id="scAula">—</strong></div>
+                            <div class="sc-row"><span>carrera</span><strong id="scCarrera">—</strong></div>
+                            <div class="sc-row"><span>semestre</span><strong id="scSemestre">—</strong></div>
+                        </div>
+                        <div class="modal-actions">
+                            <button class="btn btn-ghost" type="button" id="scNo">no (salir en 3s)</button>
+                            <button class="btn btn-primary" type="button" id="scSi">sí, marcar entrada</button>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="modal-overlay hidden" id="modalEliminar">
                     <div class="modal-card">
                         <h3>¿eliminar personal?</h3>
@@ -1053,25 +1084,67 @@
                 <div class="modal-overlay hidden" id="modalHorarioEditor">
                     <div class="modal-card modal-card-xl">
                         <h3 id="horarioEditorTitulo">horario semanal</h3>
+                        <!-- FT_HORARIO_V2 -->
                         <p class="hint-inline">Define bloques de clase. Tolerancia de entrada: 5 min después de la hora de inicio. Si hay otra clase seguida, la salida y la nueva entrada se evalúan por separado.</p>
                         <input type="hidden" id="horarioEditorPersonalId">
                         <div id="horarioEditorLista" class="horario-editor-lista"></div>
-                        <div class="horario-editor-form">
-                            <select id="heDia">
-                                <option value="0">lunes</option>
-                                <option value="1">martes</option>
-                                <option value="2">miércoles</option>
-                                <option value="3">jueves</option>
-                                <option value="4">viernes</option>
-                                <option value="5">sábado</option>
-                                <option value="6">domingo</option>
-                            </select>
-                            <input type="time" id="heInicio" value="07:30">
-                            <span class="hint-inline">→</span>
-                            <input type="time" id="heFin" value="12:45">
-                            <input type="text" id="heMateria" placeholder="materia / curso (opcional)">
-                            <input type="number" id="heTolerancia" value="5" min="0" max="60" title="tolerancia min">
-                            <button type="button" class="btn btn-sm btn-primary" id="btnAgregarBloqueHorario">agregar bloque</button>
+                        <div class="horario-editor-form horario-editor-form-grid">
+                            <div class="he-field">
+                                <label>día</label>
+                                <select id="heDia">
+                                    <option value="0">lunes</option>
+                                    <option value="1">martes</option>
+                                    <option value="2">miércoles</option>
+                                    <option value="3">jueves</option>
+                                    <option value="4">viernes</option>
+                                    <option value="5">sábado</option>
+                                    <option value="6">domingo</option>
+                                </select>
+                            </div>
+                            <div class="he-field">
+                                <label>hora inicio</label>
+                                <input type="time" id="heInicio" value="07:30">
+                            </div>
+                            <div class="he-field">
+                                <label>hora fin</label>
+                                <input type="time" id="heFin" value="12:45">
+                            </div>
+                            <div class="he-field he-field-grow">
+                                <label>carrera</label>
+                                <select id="heCarrera">
+                                    <option value="">— seleccionar carrera —</option>
+                                </select>
+                            </div>
+                            <div class="he-field">
+                                <label>semestre</label>
+                                <select id="heSemestre">
+                                    <option value="">—</option>
+                                    <option value="1">1</option>
+                                    <option value="2">2</option>
+                                    <option value="3">3</option>
+                                    <option value="4">4</option>
+                                    <option value="5">5</option>
+                                    <option value="6">6</option>
+                                </select>
+                            </div>
+                            <div class="he-field he-field-grow">
+                                <label>clase / materia</label>
+                                <input type="text" id="heMateria" list="heMateriaList" placeholder="escribe o elige una clase..." autocomplete="off">
+                                <datalist id="heMateriaList"></datalist>
+                            </div>
+                            <div class="he-field he-field-grow">
+                                <label>salón</label>
+                                <input type="text" id="heAula" list="heAulaList" placeholder="ej: 2 34-P2 · 204" autocomplete="off">
+                                <datalist id="heAulaList"></datalist>
+                            </div>
+                            <div class="he-field">
+                                <label>tol. min</label>
+                                <input type="number" id="heTolerancia" value="5" min="0" max="60" title="tolerancia minutos">
+                            </div>
+                            <div class="he-field he-field-btn">
+                                <label>&nbsp;</label>
+                                <button type="button" class="btn btn-sm btn-primary" id="btnAgregarBloqueHorario">agregar bloque</button>
+                            </div>
                         </div>
                         <div class="modal-actions">
                             <button class="btn btn-ghost" type="button" id="btnExportHorarioPdf">exportar PDF</button>

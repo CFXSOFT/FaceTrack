@@ -1,0 +1,6 @@
+guardar usando:
+git add .
+git commit -m "descripción del cambio"
+git push origin main
+
+hoy: 12 de septiembre 2026

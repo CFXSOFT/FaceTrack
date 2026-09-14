@@ -283,7 +283,13 @@ def origen_valido():
     origen = request.headers.get("Origin") or request.headers.get("Referer")
     if not origen:
         return True
-    return request.host in origen
+    # Acepta mismo host o localhost/127.0.0.1 (panel admin local)
+    if request.host in origen:
+        return True
+    host = (request.host or "").split(":")[0].lower()
+    if host in ("localhost", "127.0.0.1", "0.0.0.0"):
+        return True
+    return False
 
 def requiere_admin(func):
     from functools import wraps
@@ -394,7 +400,7 @@ def obtener_bloques_hoy(personal_id, ahora=None):
     dia = ahora.weekday()
     try:
         res = supabase.table("horarios_bloques").select(
-            "id,dia_semana,hora_inicio,hora_fin,materia,tolerancia_min"
+            "id,dia_semana,hora_inicio,hora_fin,materia,aula,carrera,semestre,tolerancia_min"
         ).eq("personal_id", personal_id).eq("dia_semana", dia).order("hora_inicio").execute()
         return res.data or []
     except Exception as e:
@@ -405,20 +411,13 @@ def obtener_bloques_hoy(personal_id, ahora=None):
 def decidir_tipo_por_horario(personal_id, ahora=None):
     """Usa bloques de clase para decidir entrada/salida y si es tardanza.
 
-    Reglas:
-    - Cada bloque tiene inicio, fin y tolerancia (default 5 min).
-    - Si la hora actual está cerca del inicio del bloque (± ventana) → entrada.
-      Tarde si marca después de inicio + tolerancia.
-    - Si está cerca del fin → salida.
-    - Si hay dos clases seguidas (fin A y inicio B muy cerca) y marca entre ambas,
-      puede generar lógica de salida de A / entrada a B según el último registro.
-    - Sin bloques: alterna entrada/salida como antes.
+    Si el maestro ya salio de un bloque y se detecta antes del siguiente,
+    devuelve requiere_confirmacion=True para que el frontend muestre el cuadro.
     """
     ahora = ahora or datetime.now()
     min_ahora = ahora.hour * 60 + ahora.minute
     bloques = obtener_bloques_hoy(personal_id, ahora)
 
-    # Fallback sin horario: alternar
     def fallback_alternar():
         with _lock_tipo_memoria:
             ultimo_tipo_memoria = _ultimo_tipo_memoria.get(personal_id)
@@ -439,13 +438,11 @@ def decidir_tipo_por_horario(personal_id, ahora=None):
     if not bloques:
         return fallback_alternar()
 
-    # Enriquecer bloques con minutos
     for b in bloques:
         b["_ini"] = _minutos(b.get("hora_inicio"))
         b["_fin"] = _minutos(b.get("hora_fin"))
         b["_tol"] = int(b.get("tolerancia_min") if b.get("tolerancia_min") is not None else 5)
 
-    # Último registro de hoy (para no duplicar entrada del mismo bloque)
     hoy_str = ahora.strftime("%Y-%m-%d")
     try:
         regs_hoy = supabase.table("registros_asistencia").select(
@@ -458,13 +455,41 @@ def decidir_tipo_por_horario(personal_id, ahora=None):
 
     ultimo_reg = regs_hoy[0] if regs_hoy else None
 
-    # Elegir el bloque más relevante a la hora actual
+    # Entre clases: ya termino un bloque y el siguiente aun no empieza
+    bloques_ord = sorted([b for b in bloques if b["_ini"] is not None], key=lambda x: x["_ini"])
+    for i, b in enumerate(bloques_ord):
+        if i + 1 >= len(bloques_ord):
+            break
+        siguiente = bloques_ord[i + 1]
+        if min_ahora > b["_fin"] and min_ahora < siguiente["_ini"]:
+            ya_entro_sig = any(
+                r.get("tipo") == "entrada" and str(r.get("bloque_id") or "") == str(siguiente.get("id") or "")
+                for r in regs_hoy
+            )
+            if not ya_entro_sig:
+                return {
+                    "tipo": None,
+                    "es_tardanza": False,
+                    "bloque_id": siguiente.get("id"),
+                    "materia": siguiente.get("materia"),
+                    "requiere_confirmacion": True,
+                    "bloque_siguiente": {
+                        "id": siguiente.get("id"),
+                        "hora_inicio": siguiente.get("hora_inicio"),
+                        "hora_fin": siguiente.get("hora_fin"),
+                        "materia": siguiente.get("materia"),
+                        "aula": siguiente.get("aula"),
+                        "carrera": siguiente.get("carrera"),
+                        "semestre": siguiente.get("semestre"),
+                    },
+                    "mensaje": "Detectado entre clases. ¿Marcar entrada anticipada a la siguiente?",
+                }
+
     mejor = None
     mejor_dist = 10**9
     for b in bloques:
         if b["_ini"] is None or b["_fin"] is None:
             continue
-        # Dentro del bloque (con margen de tolerancia antes del inicio)
         if b["_ini"] - b["_tol"] <= min_ahora <= b["_fin"] + b["_tol"]:
             dist = 0
         else:
@@ -479,16 +504,13 @@ def decidir_tipo_por_horario(personal_id, ahora=None):
     ini, fin, tol = mejor["_ini"], mejor["_fin"], mejor["_tol"]
     mid = (ini + fin) / 2
 
-    # ¿Ya hay entrada para este bloque hoy?
     ya_entro_bloque = any(
         r.get("tipo") == "entrada" and str(r.get("bloque_id") or "") == str(mejor.get("id") or "")
         for r in regs_hoy
     )
-    # Heurística adicional: si el último fue entrada y estamos en la 2ª mitad → salida
     if ultimo_reg and ultimo_reg.get("tipo") == "entrada" and min_ahora >= mid:
         tipo = "salida"
-        es_tardanza = False  # salida tardía se evalúa distinto
-        # Salida después del fin + tolerancia cuenta como irregular (no "tarde" de entrada)
+        es_tardanza = False
         mensaje = None
         if min_ahora > fin + tol:
             mensaje = f"salida fuera de horario del bloque {mejor.get('hora_inicio')}-{mejor.get('hora_fin')}"
@@ -498,7 +520,6 @@ def decidir_tipo_por_horario(personal_id, ahora=None):
         mensaje = None
     else:
         tipo = "entrada"
-        # Tarde si marca después de inicio + tolerancia
         es_tardanza = min_ahora > (ini + tol)
         mensaje = (
             f"entrada tarde al bloque {mejor.get('hora_inicio')} (tol. {tol} min)"
@@ -506,8 +527,6 @@ def decidir_tipo_por_horario(personal_id, ahora=None):
             f"entrada a tiempo — {mejor.get('materia') or mejor.get('hora_inicio')}"
         )
 
-    # Clase siguiente muy cerca: si salimos tarde de A y ya empezó B, la entrada a B también será tarde
-    # (eso se evalúa en el próximo marcaje como entrada al bloque B).
     return {
         "tipo": tipo,
         "es_tardanza": bool(es_tardanza),
@@ -515,6 +534,7 @@ def decidir_tipo_por_horario(personal_id, ahora=None):
         "materia": mejor.get("materia"),
         "mensaje": mensaje,
     }
+
 
 
 _ultima_alerta_tardanzas = 0
@@ -599,6 +619,20 @@ def api_reconocer():
     # Si no hay bloques, cae al modo alternado (entrada → salida → entrada...).
     ahora_dt = datetime.now()
     decision = decidir_tipo_por_horario(p["id"], ahora_dt)
+
+    # Confirmacion de entrada anticipada a la siguiente clase
+    if decision.get("requiere_confirmacion"):
+        return jsonify({
+            "ok": False,
+            "requiere_confirmacion": True,
+            "personal_id": p["id"],
+            "nombre": p["nombre"],
+            "foto": p.get("icono_path") or p.get("foto_path"),
+            "confianza": round((1 - distancia) * 100, 1),
+            "bloque_siguiente": decision.get("bloque_siguiente"),
+            "mensaje": decision.get("mensaje") or "¿Marcar entrada a la siguiente clase?",
+        })
+
     tipo = decision["tipo"]
     es_tardanza = decision["es_tardanza"]
     bloque_id = decision.get("bloque_id")
@@ -654,6 +688,138 @@ def api_reconocer():
         "materia": materia,
         "mensaje_extra": decision.get("mensaje"),
     })
+
+
+@app.route("/api/reconocer/confirmar", methods=["POST"])
+def api_reconocer_confirmar():
+    """El maestro acepto marcar entrada anticipada a la siguiente clase (hora extra)."""
+    data = request.get_json() or {}
+    personal_id = data.get("personal_id")
+    bloque_id = data.get("bloque_id")
+    if not personal_id or not bloque_id:
+        return jsonify({"ok": False, "mensaje": "Faltan personal_id o bloque_id."}), 400
+
+    res_p = supabase.table("personal").select("id,nombre,icono_path,foto_path").eq("id", personal_id).limit(1).execute()
+    if not res_p.data:
+        return jsonify({"ok": False, "mensaje": "Personal no encontrado."}), 404
+    p = res_p.data[0]
+
+    res_b = supabase.table("horarios_bloques").select(
+        "id,hora_inicio,hora_fin,materia,aula,carrera,semestre"
+    ).eq("id", bloque_id).limit(1).execute()
+    if not res_b.data:
+        return jsonify({"ok": False, "mensaje": "Bloque no encontrado."}), 404
+    bloque = res_b.data[0]
+
+    ahora_dt = datetime.now()
+    registro_id = str(uuid.uuid4())
+    conf = data.get("confianza")
+    try:
+        conf_f = float(conf) if conf is not None else 0.9
+        if conf_f > 1:
+            conf_f = conf_f / 100.0
+    except (TypeError, ValueError):
+        conf_f = 0.9
+
+    fila = {
+        "id": registro_id,
+        "personal_id": personal_id,
+        "tipo": "entrada",
+        "confianza": round(conf_f, 3),
+        "fecha_hora": ahora_dt.strftime("%Y-%m-%d %H:%M:%S"),
+        "es_tardanza": False,
+        "es_hora_extra": True,
+        "bloque_id": bloque_id,
+        "materia": bloque.get("materia"),
+    }
+    try:
+        supabase.table("registros_asistencia").insert(fila).execute()
+    except Exception as e:
+        msg = str(e).lower()
+        if "es_hora_extra" in msg or "column" in msg:
+            fila.pop("es_hora_extra", None)
+            try:
+                supabase.table("registros_asistencia").insert(fila).execute()
+            except Exception as e2:
+                print(f"[api_reconocer_confirmar] sin conexion: {e2}")
+                guardar_registro_pendiente(fila)
+        else:
+            print(f"[api_reconocer_confirmar] sin conexion: {e}")
+            guardar_registro_pendiente(fila)
+
+    with _lock_tipo_memoria:
+        _ultimo_tipo_memoria[personal_id] = "entrada"
+    with _lock_deteccion:
+        _ultima_deteccion[personal_id] = time.time()
+
+    return jsonify({
+        "ok": True,
+        "nombre": p["nombre"],
+        "tipo": "entrada",
+        "es_hora_extra": True,
+        "es_tardanza": False,
+        "materia": bloque.get("materia"),
+        "foto": p.get("icono_path") or p.get("foto_path"),
+        "confianza": round(conf_f * 100, 1),
+        "mensaje_extra": f"entrada anticipada (hora extra) — {bloque.get('materia') or bloque.get('hora_inicio')}",
+    })
+
+
+@app.route("/api/registros/<id_registro>", methods=["DELETE"])
+@requiere_admin
+def api_registro_eliminar(id_registro):
+    if not id_registro or id_registro in ("undefined", "null", ""):
+        return jsonify({"ok": False, "mensaje": "ID de registro inválido."}), 400
+    try:
+        res = supabase.table("registros_asistencia").delete().eq("id", id_registro).execute()
+        return jsonify({"ok": True, "eliminados": 1})
+    except Exception as e:
+        print(f"[api_registro_eliminar] {e}")
+        return jsonify({"ok": False, "mensaje": str(e)}), 500
+
+
+@app.route("/api/registros/eliminar", methods=["POST"])
+@requiere_admin
+def api_registros_eliminar_bulk():
+    """Elimina uno o varios registros. Body: { ids: ["uuid", ...] }"""
+    data = request.get_json() or {}
+    ids = data.get("ids") or []
+    if isinstance(ids, str):
+        ids = [ids]
+    ids = [str(i).strip() for i in ids if i and str(i).strip() not in ("undefined", "null")]
+    if not ids:
+        return jsonify({"ok": False, "mensaje": "No se enviaron IDs válidos."}), 400
+    try:
+        supabase.table("registros_asistencia").delete().in_("id", ids).execute()
+        return jsonify({"ok": True, "eliminados": len(ids)})
+    except Exception as e:
+        print(f"[api_registros_eliminar_bulk] {e}")
+        return jsonify({"ok": False, "mensaje": str(e)}), 500
+
+
+@app.route("/api/horarios/catalogo", methods=["GET"])
+@requiere_admin
+def api_horarios_catalogo():
+    """Materias y aulas ya usadas (para autocompletar en el editor de horario)."""
+    try:
+        res = supabase.table("horarios_bloques").select("materia,aula").limit(2000).execute()
+        filas = res.data or []
+    except Exception as e:
+        print(f"[api_horarios_catalogo] {e}")
+        filas = []
+    materias, aulas = set(), set()
+    for f in filas:
+        m = (f.get("materia") or "").strip()
+        a = (f.get("aula") or "").strip()
+        if m:
+            materias.add(m)
+        if a:
+            aulas.add(a)
+    return jsonify({
+        "materias": sorted(materias, key=lambda x: x.lower()),
+        "aulas": sorted(aulas, key=lambda x: x.lower()),
+    })
+
 
 @app.route("/api/identificar", methods=["POST"])
 def api_identificar():
@@ -761,7 +927,7 @@ def api_registros():
     if rango != "custom": hasta = hoy
 
     query = supabase.table("registros_asistencia").select(
-        "id,tipo,fecha_hora,confianza,es_tardanza,bloque_id,materia,"
+        "id,tipo,fecha_hora,confianza,es_tardanza,es_hora_extra,bloque_id,materia,"
         "personal(nombre,tipo_personal,area,curso,color,foto_path),"
         "justificaciones(id,estado)"
     ).gte("fecha_hora", desde.strftime("%Y-%m-%d")).lte("fecha_hora", hasta.strftime("%Y-%m-%d") + " 23:59:59")
@@ -794,7 +960,8 @@ def api_registros():
             "area": p.get("area"), "curso": p.get("curso"), "color": p.get("color") or "#c6ff2e",
             "foto": p.get("foto_path"), "tipo": f["tipo"], "fecha_hora": f["fecha_hora"],
             "confianza": f.get("confianza") or 0, "justificado": ultimo_just == "aprobado",
-            "es_tardanza": bool(f.get("es_tardanza")), "materia": f.get("materia"),
+            "es_tardanza": bool(f.get("es_tardanza")), "es_hora_extra": bool(f.get("es_hora_extra")),
+            "materia": f.get("materia"), "id": f["id"],
         })
     return jsonify(salida)
 

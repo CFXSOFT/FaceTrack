@@ -307,8 +307,12 @@ function stopScanning() {
     log('Cámara detenida.');
 }
 
+let _scPendiente = null;
+let _scCooldownUntil = 0;
+
 function captureAndSend() {
     if (!STATE.stream || !STATE.isScanning) return;
+    if (Date.now() < _scCooldownUntil) return;
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     const ctx = canvas.getContext('2d');
@@ -322,9 +326,13 @@ function captureAndSend() {
     })
         .then(r => r.json())
         .then(data => {
+            if (data.requiere_confirmacion) {
+                mostrarModalSiguienteClase(data);
+                return;
+            }
             if (data.ok) {
-                log(`${data.nombre} — ${data.tipo.toUpperCase()}${data.es_tardanza ? ' · TARDE' : ''}${data.materia ? ' [' + data.materia + ']' : ''} (${data.confianza}%)`);
-                mostrarCarnetToast(data.nombre, data.tipo, data.foto, data.es_tardanza);
+                log(`${data.nombre} — ${data.tipo.toUpperCase()}${data.es_tardanza ? ' · TARDE' : ''}${data.es_hora_extra ? ' · HORA EXTRA' : ''}${data.materia ? ' [' + data.materia + ']' : ''} (${data.confianza}%)`);
+                mostrarCarnetToast(data.nombre, data.tipo, data.foto, data.es_tardanza, data.es_hora_extra);
                 cargarRecientes();
             } else if (data.mensaje && !data.mensaje.includes('reconocido') && !data.mensaje.toLowerCase().includes('rostro')
                 && !data.mensaje.toLowerCase().includes('no hay personal')) {
@@ -334,8 +342,73 @@ function captureAndSend() {
         .catch(() => log('Error de conexión con el servidor.'));
 }
 
+function mostrarModalSiguienteClase(data) {
+    _scPendiente = data;
+    const b = data.bloque_siguiente || {};
+    const msg = $('#scMensaje');
+    if (msg) msg.textContent = data.mensaje || '¿Marcar entrada anticipada a la siguiente clase?';
+    const set = (id, v) => { const el = $(id); if (el) el.textContent = v; };
+    set('#scHorario', `${b.hora_inicio || '—'} – ${b.hora_fin || '—'}`);
+    set('#scMateria', b.materia || '—');
+    set('#scAula', b.aula || '—');
+    set('#scCarrera', b.carrera || '—');
+    set('#scSemestre', b.semestre != null ? String(b.semestre) : '—');
+    $('#modalSiguienteClase')?.classList.remove('hidden');
+    stopScanning();
+}
+
+async function confirmarSiguienteClaseSi() {
+    if (!_scPendiente) return;
+    const payload = {
+        personal_id: _scPendiente.personal_id,
+        bloque_id: (_scPendiente.bloque_siguiente || {}).id,
+        confianza: (_scPendiente.confianza || 90) / 100
+    };
+    try {
+        const res = await fetch('/api/reconocer/confirmar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.ok) {
+            log(`${data.nombre} — ENTRADA · HORA EXTRA${data.materia ? ' [' + data.materia + ']' : ''}`);
+            mostrarCarnetToast(data.nombre, 'entrada', data.foto, false, true);
+            cargarRecientes();
+        } else {
+            log(data.mensaje || 'No se pudo confirmar.');
+        }
+    } catch (e) {
+        log('Error de conexión al confirmar.');
+    }
+    _scPendiente = null;
+    $('#modalSiguienteClase')?.classList.add('hidden');
+    // reanudar escaneo si la cámara sigue activa
+    if (STATE.stream && !STATE.isScanning) {
+        try { startScanning(); } catch (e) { /* ignore */ }
+    }
+}
+
+function confirmarSiguienteClaseNo() {
+    _scPendiente = null;
+    $('#modalSiguienteClase')?.classList.add('hidden');
+    _scCooldownUntil = Date.now() + 3000;
+    log('Entrada anticipada rechazada. 3s para salir de la cámara...');
+    setTimeout(() => {
+        if (STATE.stream && !STATE.isScanning) {
+            try { startScanning(); } catch (e) { /* ignore */ }
+        }
+    }, 3000);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    $('#scSi')?.addEventListener('click', confirmarSiguienteClaseSi);
+    $('#scNo')?.addEventListener('click', confirmarSiguienteClaseNo);
+});
+
+
 let carnetToastTimeout = null;
-function mostrarCarnetToast(nombre, tipo, foto, esTarde) {
+function mostrarCarnetToast(nombre, tipo, foto, esTarde, esHoraExtra) {
     const toast = $('#carnetToast');
     const img = $('#carnetToastFoto');
     const fallback = $('#carnetToastFallback');
@@ -345,6 +418,7 @@ function mostrarCarnetToast(nombre, tipo, foto, esTarde) {
     $('#carnetToastNombre').textContent = nombre;
     let msg = tipo === 'salida' ? 'salida registrada' : 'entrada registrada';
     if (esTarde) msg += ' · TARDE';
+    if (esHoraExtra) msg += ' · HORA EXTRA';
     msgEl.textContent = msg;
     msgEl.classList.toggle('salida', tipo === 'salida');
     msgEl.classList.toggle('tarde', !!esTarde);
@@ -1424,13 +1498,19 @@ window.abrirEditorHorario = async function (personalId, nombre) {
     resetModalPos(modal);
     modal.classList.remove('hidden');
 
+    // Carreras desde gestión de carreras
     const selC = $('#heCarrera');
-    if (selC && selC.options.length <= 1) {
+    if (selC) {
+        const actual = selC.value;
+        selC.innerHTML = '<option value="">— seleccionar carrera —</option>';
         (STATE.areasSENATI || []).forEach(a => {
             const o = document.createElement('option');
             o.value = a; o.textContent = a; selC.appendChild(o);
         });
+        if (actual) selC.value = actual;
     }
+    // Catálogo de materias y aulas ya usadas (autocompletar)
+    cargarCatalogoHorario();
     const btnPdf = $('#btnExportHorarioPdf');
     if (btnPdf) {
         btnPdf.onclick = () => { window.open(`/api/personal/${personalId}/horarios/pdf`, '_blank'); };
@@ -1545,6 +1625,26 @@ window.eliminarBloqueHorario = async function (bloqueId, personalId) {
     }
 };
 
+
+async function cargarCatalogoHorario() {
+    try {
+        const res = await fetch('/api/horarios/catalogo');
+        if (!res.ok) return;
+        const data = await res.json();
+        const dlM = $('#heMateriaList');
+        const dlA = $('#heAulaList');
+        if (dlM) {
+            dlM.innerHTML = (data.materias || []).map(m => `<option value="${escapeHtml(m)}">`).join('');
+        }
+        if (dlA) {
+            dlA.innerHTML = (data.aulas || []).map(a => `<option value="${escapeHtml(a)}">`).join('');
+        }
+        // recordar localmente también
+        STATE._catalogoMaterias = data.materias || [];
+        STATE._catalogoAulas = data.aulas || [];
+    } catch (e) { /* silencioso */ }
+}
+
 async function agregarBloqueDesdeEditor() {
     const personalId = $('#horarioEditorPersonalId').value;
     if (!personalId) return;
@@ -1573,7 +1673,10 @@ async function agregarBloqueDesdeEditor() {
         if (res.ok && data.ok !== false) {
             $('#heMateria').value = '';
             if ($('#heAula')) $('#heAula').value = '';
+            if ($('#heCarrera')) $('#heCarrera').value = '';
+            if ($('#heSemestre')) $('#heSemestre').value = '';
             await recargarBloquesEditor(personalId);
+            cargarCatalogoHorario();
             renderTablaHorarioPersonal();
         } else {
             alert(data.mensaje || 'No se pudo agregar el bloque.');
@@ -2410,6 +2513,67 @@ async function cargarDashboardCharts() {
 $('#btnGenerarReporte')?.addEventListener('click', generarReporte);
 $('#btnExportCsv')?.addEventListener('click', exportarReporteCsv);
 
+// Estado del modo eliminar reportes
+STATE.repDeleteMode = 'off'; // off | single | multi
+
+$('#btnModoEliminar')?.addEventListener('click', () => {
+    if ((STATE.repDeleteMode || 'off') === 'off') {
+        STATE.repDeleteMode = 'single';
+    } else {
+        STATE.repDeleteMode = 'off';
+    }
+    aplicarModoEliminarUI();
+});
+
+$('#btnModoMulti')?.addEventListener('click', () => {
+    if ((STATE.repDeleteMode || 'off') === 'multi') {
+        STATE.repDeleteMode = 'single';
+    } else {
+        STATE.repDeleteMode = 'multi';
+    }
+    // limpiar checks al cambiar
+    $$('#tablaReportes .rep-check').forEach(c => { c.checked = false; });
+    const selAll = $('#repSelectAll');
+    if (selAll) selAll.checked = false;
+    aplicarModoEliminarUI();
+});
+
+$('#btnCancelarEliminar')?.addEventListener('click', () => {
+    STATE.repDeleteMode = 'off';
+    $$('#tablaReportes .rep-check').forEach(c => { c.checked = false; });
+    aplicarModoEliminarUI();
+});
+
+$('#btnEliminarSeleccionados')?.addEventListener('click', async () => {
+    const ids = idsRegistrosSeleccionados();
+    if (!ids.length) return;
+    if (!confirm(`¿Eliminar ${ids.length} registro(s) de entrada/salida?`)) return;
+    const ok = await eliminarRegistrosPorIds(ids);
+    if (ok) aplicarModoEliminarUI();
+});
+
+$('#tablaReportes')?.addEventListener('click', async e => {
+    const btn = e.target.closest('.btn-del-reg');
+    if (!btn) return;
+    const id = btn.dataset.id;
+    if (!id || id === 'undefined') {
+        alert('Este registro no tiene ID. Vuelve a generar el reporte.');
+        return;
+    }
+    if (!confirm('¿Eliminar este registro de entrada/salida?')) return;
+    await eliminarRegistrosPorIds([id]);
+});
+
+$('#tablaReportes')?.addEventListener('change', e => {
+    if (e.target.classList.contains('rep-check') || e.target.id === 'repSelectAll') {
+        if (e.target.id === 'repSelectAll') {
+            const on = e.target.checked;
+            $$('#tablaReportes .rep-check:not(:disabled)').forEach(c => { c.checked = on; });
+        }
+        aplicarModoEliminarUI();
+    }
+});
+
 async function generarReporte() {
     const inicio = $('#repFechaInicio').value;
     const fin = $('#repFechaFin').value;
@@ -2428,10 +2592,12 @@ async function generarReporte() {
 function renderReportes(data) {
     const tbody = $('#tablaReportes tbody');
     const empty = $('#emptyReportes');
+    const mode = STATE.repDeleteMode || 'off'; // off | single | multi
     if (!data || data.length === 0) {
         tbody.innerHTML = '';
         empty.classList.remove('hidden');
         $('#repResumen').classList.add('hidden');
+        aplicarModoEliminarUI();
         return;
     }
     empty.classList.add('hidden');
@@ -2446,12 +2612,23 @@ function renderReportes(data) {
 
         const fechaSolo = (r.fecha_hora || '').substring(0, 10);
         const tr = document.createElement('tr');
+        const rid = r.id || r.registro_id || '';
+        const extraCls = r.es_hora_extra ? ' hora-extra' : '';
+        const extraLbl = r.es_hora_extra ? ' · extra' : '';
+
+        const checkTd = `<td class="col-check ${mode === 'multi' ? '' : 'hidden'}"><input type="checkbox" class="rep-check" data-id="${escapeHtml(rid)}" ${rid ? '' : 'disabled'}></td>`;
+        const accTd = `<td class="col-acciones ${mode === 'single' ? '' : 'hidden'}">
+                <button type="button" class="btn-del-reg" data-id="${escapeHtml(rid)}" ${rid ? '' : 'disabled'}>eliminar registro</button>
+            </td>`;
+
         tr.innerHTML = `
+            ${checkTd}
             <td>${fechaSolo}</td>
             <td><strong>${escapeHtml(r.nombre || '')}</strong></td>
-            <td><span class="badge tipo-${r.tipo}">${r.tipo}</span></td>
+            <td><span class="badge tipo-${r.tipo}${extraCls}">${r.tipo}${extraLbl}</span></td>
             <td>${horaDeFecha(r.fecha_hora)}</td>
             <td>${((r.confianza || 0) * 100).toFixed(1)}%</td>
+            ${accTd}
         `;
         frag.appendChild(tr);
     });
@@ -2462,25 +2639,103 @@ function renderReportes(data) {
     $('#resEntradas').textContent = entradas;
     $('#resSalidas').textContent = salidas;
     $('#resTardanzas').textContent = tardanzas;
+    const selAll = $('#repSelectAll');
+    if (selAll) selAll.checked = false;
+    aplicarModoEliminarUI();
+}
+
+function aplicarModoEliminarUI() {
+    const mode = STATE.repDeleteMode || 'off';
+    const table = $('#tablaReportes');
+    if (table) table.dataset.deleteMode = mode;
+
+    // headers
+    $$('#tablaReportes thead .col-check').forEach(el => el.classList.toggle('hidden', mode !== 'multi'));
+    $$('#tablaReportes thead .col-acciones').forEach(el => el.classList.toggle('hidden', mode !== 'single'));
+    // body cells
+    $$('#tablaReportes tbody .col-check').forEach(el => el.classList.toggle('hidden', mode !== 'multi'));
+    $$('#tablaReportes tbody .col-acciones').forEach(el => el.classList.toggle('hidden', mode !== 'single'));
+
+    const sub = $('#repDeleteSubmenu');
+    const btnModo = $('#btnModoEliminar');
+    const btnMulti = $('#btnModoMulti');
+    const btnSel = $('#btnEliminarSeleccionados');
+    if (sub) sub.classList.toggle('hidden', mode === 'off');
+    if (btnModo) {
+        btnModo.classList.toggle('active', mode !== 'off');
+        btnModo.textContent = mode === 'off' ? 'eliminar reportes' : (mode === 'single' ? 'modo: uno a uno' : 'modo: múltiple');
+    }
+    if (btnMulti) {
+        btnMulti.textContent = mode === 'multi' ? 'modo uno a uno' : 'selección múltiple';
+        btnMulti.classList.toggle('active', mode === 'multi');
+    }
+    if (btnSel) {
+        const n = idsRegistrosSeleccionados().length;
+        btnSel.classList.toggle('hidden', mode !== 'multi' || n === 0);
+        if (n > 0) btnSel.textContent = n === 1 ? 'eliminar 1 seleccionado' : `eliminar ${n} seleccionados`;
+    }
+}
+
+function idsRegistrosSeleccionados() {
+    return $$('#tablaReportes .rep-check:checked').map(c => c.dataset.id).filter(Boolean);
+}
+
+async function eliminarRegistrosPorIds(ids) {
+    ids = (ids || []).filter(id => id && id !== 'undefined' && id !== 'null');
+    if (!ids.length) {
+        alert('No hay registros válidos para eliminar. Genera el reporte de nuevo e intenta otra vez.');
+        return false;
+    }
+    try {
+        const res = await fetch('/api/registros/eliminar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 401) {
+            alert('Sesión de admin expirada. Vuelve a iniciar sesión en el panel admin.');
+            return false;
+        }
+        if (!res.ok || data.ok === false) {
+            alert(data.mensaje || ('Error al eliminar (HTTP ' + res.status + ')'));
+            return false;
+        }
+        const set = new Set(ids);
+        STATE.reportesCache = (STATE.reportesCache || []).filter(x => !set.has(x.id) && !set.has(x.registro_id));
+        renderReportes(STATE.reportesCache);
+        return true;
+    } catch (err) {
+        alert('Error de conexión al eliminar.');
+        return false;
+    }
 }
 
 function exportarReporteCsv() {
     if (!STATE.reportesCache.length) return;
-    const headers = ['Fecha', 'Nombre', 'Tipo', 'Hora', 'Confianza', 'Area'];
+    const headers = ['Fecha', 'Nombre', 'Tipo', 'Hora', 'Confianza', 'Area', 'Hora extra'];
     const rows = STATE.reportesCache.map(r => [
         (r.fecha_hora || '').substring(0, 10),
-        r.nombre,
-        r.tipo,
+        r.nombre || '',
+        r.tipo || '',
         horaDeFecha(r.fecha_hora),
         ((r.confianza || 0) * 100).toFixed(1) + '%',
-        r.area || ''
+        r.area || '',
+        r.es_hora_extra ? 'sí' : ''
     ]);
-    const csv = [headers.join(','), ...rows.map(r => r.map(x => `"${x}"`).join(','))].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    let xml = '<?xml version="1.0"?><?mso-application progid="Excel.Sheet"?>';
+    xml += '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">';
+    xml += '<Worksheet ss:Name="Asistencias"><Table>';
+    xml += '<Row>' + headers.map(h => `<Cell><Data ss:Type="String">${escapeHtml(h)}</Data></Cell>`).join('') + '</Row>';
+    rows.forEach(row => {
+        xml += '<Row>' + row.map(c => `<Cell><Data ss:Type="String">${escapeHtml(String(c))}</Data></Cell>`).join('') + '</Row>';
+    });
+    xml += '</Table></Worksheet></Workbook>';
+    const blob = new Blob([xml], { type: 'application/vnd.ms-excel' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `reporte_SENATI_${formatearFecha(new Date())}.csv`;
+    a.download = `reporte_SENATI_${formatearFecha(new Date())}.xls`;
     a.click();
     URL.revokeObjectURL(url);
 }

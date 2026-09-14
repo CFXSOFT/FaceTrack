@@ -653,9 +653,9 @@ textarea:focus {
   border-radius: var(--radius-md);
   width: 100%;
   flex: 1 1 auto;
-  min-height: 280px;
+  min-height: 420px;
   max-height: none;
-  height: clamp(280px, calc(100vh - 320px), 72vh);
+  height: clamp(420px, calc(100vh - 180px), 88vh);
   overflow: hidden;
   display: flex;
   align-items: center;
@@ -3752,18 +3752,18 @@ textarea:focus {
 .horario-editor-lista {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin: 16px 0;
-  max-height: 320px;
+  gap: 14px;
+  margin: 20px 0;
+  max-height: 360px;
   overflow-y: auto;
 }
 
 .horario-bloque-row {
   display: grid;
   grid-template-columns: 90px 70px 16px 70px 1fr 36px;
-  gap: 8px;
+  gap: 12px;
   align-items: center;
-  padding: 10px 12px;
+  padding: 14px 16px;
   background: var(--bg-elev-2);
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
@@ -3773,9 +3773,9 @@ textarea:focus {
 .horario-editor-form {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 12px;
   align-items: center;
-  padding: 12px 0;
+  padding: 16px 0;
   border-top: 1px solid var(--border);
 }
 
@@ -3929,6 +3929,12 @@ textarea:focus {
   grid-template-columns: 1fr 1fr;
   gap: 16px;
   margin-top: 20px;
+  margin-bottom: 36px;
+}
+.reportes-table-wrap {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
 }
 
 @media (max-width: 900px) {
@@ -3978,4 +3984,160 @@ textarea:focus {
   flex-wrap: wrap;
   align-items: center;
   gap: 12px;
+}
+
+
+/* Hora extra (amarillo) + modal siguiente clase */
+.badge.hora-extra,
+.badge-tipo.hora-extra,
+span.badge.tipo-entrada.hora-extra {
+  background: #f5c542 !important;
+  color: #1a1a1a !important;
+}
+
+.sc-info {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 16px 0;
+  padding: 14px 16px;
+  background: var(--bg-elev-2);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+}
+.sc-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+}
+.sc-row span { color: var(--text-muted); }
+.btn-del-reg {
+  color: #ff5d5d;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+.btn-del-reg:hover {
+  background: rgba(255, 93, 93, 0.15);
+  border-color: rgba(255, 93, 93, 0.35);
+}
+
+
+/* Formulario horario en grilla */
+.horario-editor-form-grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 14px 16px !important;
+  align-items: end;
+  padding: 18px 0 !important;
+}
+.he-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.he-field label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.he-field-grow {
+  grid-column: span 2;
+}
+.he-field-btn {
+  justify-content: flex-end;
+}
+.horario-editor-form-grid select,
+.horario-editor-form-grid input[type="time"],
+.horario-editor-form-grid input[type="text"],
+.horario-editor-form-grid input[type="number"] {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-input);
+  color: var(--text);
+  font-size: 13px;
+}
+.btn-danger-soft {
+  background: rgba(255, 93, 93, 0.15);
+  color: #ff7a7a;
+  border: 1px solid rgba(255, 93, 93, 0.35);
+}
+.btn-danger-soft:hover {
+  background: rgba(255, 93, 93, 0.28);
+}
+.btn-del-reg {
+  font-size: 12px !important;
+  white-space: nowrap;
+  color: #ff7a7a !important;
+}
+#tablaReportes th:first-child,
+#tablaReportes td:first-child {
+  text-align: center;
+  width: 36px;
+}
+
+
+/* Panel eliminar reportes */
+.rep-delete-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.rep-delete-submenu {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  min-width: 180px;
+  padding: 8px;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+}
+.rep-delete-submenu.hidden { display: none; }
+.rep-sub-btn {
+  border: none;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.rep-sub-btn:hover { background: rgba(255,255,255,0.06); }
+.rep-sub-btn.active { background: rgba(255, 93, 93, 0.15); color: #ff8a8a; }
+.rep-sub-btn.muted { color: var(--text-muted); }
+#btnModoEliminar.active {
+  background: rgba(255, 93, 93, 0.22);
+  border-color: rgba(255, 93, 93, 0.45);
+}
+.col-check.hidden,
+.col-acciones.hidden { display: none !important; }
+.btn-del-reg {
+  background: none;
+  border: none;
+  color: #ff6b6b;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 4px 0;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.btn-del-reg:hover { text-decoration: underline; color: #ff9090; }
+#tablaReportes td, #tablaReportes th {
+  vertical-align: middle;
 }

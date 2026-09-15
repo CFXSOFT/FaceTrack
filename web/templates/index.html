@@ -9,6 +9,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="static/css/style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 </head>
 
 <body>
@@ -417,6 +418,19 @@
 
                 <!-- DASHBOARD ADMIN -->
                 <div class="admin-dashboard hidden" id="adminDashboard">
+                    <div class="ft-select-banner" id="ftSelectBanner">
+                        <div class="ft-select-marquee" aria-hidden="true">
+                            <span>FACE TRACK · SELECT · 2026 · </span>
+                            <span>FACE TRACK · SELECT · 2026 · </span>
+                            <span>FACE TRACK · SELECT · 2026 · </span>
+                            <span>FACE TRACK · SELECT · 2026 · </span>
+                        </div>
+                        <div class="ft-select-card">
+                            <h2 class="ft-select-title">FaceTrack Select 2026</h2>
+                            <p class="ft-select-desc">Sistema de reconocimiento facial desarrollado en 2026 para Senati</p>
+                            <div class="ft-select-badge">sistema desarrollado en un 45%</div>
+                        </div>
+                    </div>
                     <div class="admin-header">
                         <div class="admin-header-left">
                             <h1 class="page-title">modo admin</h1>
@@ -1147,8 +1161,27 @@
                             </div>
                         </div>
                         <div class="modal-actions">
+                            <button class="btn btn-sm btn-primary" type="button" id="btnVerVistaSemanal">ver vista semanal</button>
                             <button class="btn btn-ghost" type="button" id="btnExportHorarioPdf">exportar PDF</button>
                             <button class="btn btn-ghost" onclick="cerrarModal('modalHorarioEditor')">cerrar</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MODAL: VISTA SEMANAL HORARIO (pantalla casi completa) -->
+                <div class="modal-overlay hidden" id="modalHorarioWeek">
+                    <div class="modal-card modal-card-fullscreen">
+                        <div class="hw-modal-top">
+                            <div>
+                                <h3 id="horarioWeekTitulo">vista semanal</h3>
+                                <p class="hint-inline" id="horarioWeekSub">bloques del instructor</p>
+                            </div>
+                            <div class="hw-modal-actions">
+                                <button class="btn btn-ghost" type="button" id="btnCerrarVistaSemanal">cerrar</button>
+                            </div>
+                        </div>
+                        <div class="horario-week-scroll horario-week-scroll-lg">
+                            <div class="horario-week-grid" id="horarioWeekGrid"></div>
                         </div>
                     </div>
                 </div>
@@ -1206,8 +1239,46 @@
                                 <label>tipo de personal (función) <span class="req">*</span></label>
                                 <input type="text" id="editCargo" placeholder="ej: limpieza">
                             </div>
-                            <p class="hint-inline" style="display:block;margin-top:4px;">para volver a capturar el
-                                rostro o cambiar el ícono, elimina este registro y créalo de nuevo desde "agregar".</p>
+                            <div class="edit-photos-section">
+                                <h4>fotos</h4>
+                                <div class="edit-photos-grid">
+                                    <div class="edit-photo-card">
+                                        <label>foto de referencia (reconocimiento)</label>
+                                        <div class="edit-photo-preview" id="editFotoRefPreview">
+                                            <span class="edit-photo-placeholder">sin foto</span>
+                                        </div>
+                                        <div class="camera-box edit-cam-box" id="editCameraBox">
+                                            <video id="editVideo" autoplay playsinline muted style="display:none;"></video>
+                                            <canvas id="editCanvas" style="display:none;"></canvas>
+                                            <div class="camera-box-placeholder" id="editCamPlaceholder">
+                                                <p>cámara apagada</p>
+                                            </div>
+                                        </div>
+                                        <div class="camera-actions">
+                                            <button type="button" class="btn btn-sm" id="btnEditCamOn">encender</button>
+                                            <button type="button" class="btn btn-sm btn-primary" id="btnEditCapturar" disabled>capturar</button>
+                                            <button type="button" class="btn btn-sm btn-ghost" id="btnEditCamOff" disabled>apagar</button>
+                                        </div>
+                                        <label class="edit-check-label hidden" id="editUsarComoPerfilWrap">
+                                            <input type="checkbox" id="editUsarComoPerfil">
+                                            usar también como foto de perfil
+                                        </label>
+                                    </div>
+                                    <div class="edit-photo-card">
+                                        <label>foto de perfil</label>
+                                        <div class="edit-photo-preview" id="editFotoPerfilPreview">
+                                            <span class="edit-photo-placeholder">sin foto</span>
+                                        </div>
+                                        <input type="file" id="editIconFile" accept="image/*" style="display:none;">
+                                        <button type="button" class="btn btn-sm btn-ghost" id="btnEditIconFile" style="width:100%;margin-top:8px;">
+                                            subir foto de perfil
+                                        </button>
+                                        <button type="button" class="btn btn-sm btn-ghost hidden" id="btnEditIconClear" style="width:100%;margin-top:6px;">
+                                            quitar nueva foto
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
                         </form>
 
                         <div class="horario-section">
@@ -1248,6 +1319,7 @@
         </main>
     </div>
 
+    <script src="static/js/liveness.js"></script>
     <script src="static/js/app.js"></script>
 </body>
 

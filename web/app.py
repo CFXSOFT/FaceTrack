@@ -53,8 +53,8 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 BUCKET_FOTOS = "fotos-personal"
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_NAME = "Facenet"
-DETECTOR_BACKEND = "opencv"
+MODEL_NAME = "Facenet512"
+DETECTOR_BACKEND = "yunet"
 DIAS_ANTES_DE_AVISAR = 30  # cada cuanto se avisa que conviene exportar/liberar espacio
 SEGUNDOS_ENTRE_INTENTOS_SYNC = 30
 
@@ -242,7 +242,7 @@ def cargar_config():
         print(f"[cargar_config] sin conexion a Supabase, usando valores por defecto: {e}")
         row = {}
     config = dict(row)
-    config.setdefault("umbral_confianza", 0.40)
+    config.setdefault("umbral_confianza", 0.30)
     config.setdefault("intervalo_escaneo", 3.0)
     config.setdefault("tiempo_reescaneo", 4)
     config.setdefault("hora_entrada", "08:00")
@@ -309,7 +309,45 @@ def dataurl_a_bgr(data_url):
     arr = np.array(img)
     return arr[:, :, ::-1]
 
-def extraer_embedding(frame_bgr):
+class SpoofDetectado(Exception):
+    """Se muestra una foto/pantalla en vez de un rostro real."""
+    pass
+
+
+_anti_spoofing_disponible = None  # None = aun no se sabe, True/False una vez comprobado
+
+
+def extraer_embedding(frame_bgr, verificar_vida=True):
+    """Extrae el embedding facial. Si verificar_vida=True (por defecto), primero
+    hace una verificación de vida (anti-spoofing) que solo revisa si es un rostro
+    real o una foto/pantalla -- sin reutilizar ese resultado para el embedding en
+    sí. El embedding siempre se calcula con el método simple y ya probado
+    (DeepFace.represent con el detector normal), evitando reprocesar un recorte
+    intermedio que en algunos casos no era compatible con el segundo paso y hacía
+    fallar el registro en silencio.
+    """
+    global _anti_spoofing_disponible
+    if verificar_vida and _anti_spoofing_disponible is not False:
+        try:
+            caras = DeepFace.extract_faces(
+                frame_bgr, detector_backend=DETECTOR_BACKEND,
+                enforce_detection=True, anti_spoofing=True,
+            )
+            _anti_spoofing_disponible = True
+            if caras and caras[0].get("is_real") is False:
+                raise SpoofDetectado("Se detectó una foto o pantalla, no un rostro real.")
+        except SpoofDetectado:
+            raise
+        except TypeError:
+            _anti_spoofing_disponible = False
+            print("[extraer_embedding] tu versión de DeepFace no soporta anti-spoofing; "
+                  "se sigue reconociendo normal, solo sin esa verificación extra.")
+        except ValueError:
+            # No se detecto ningun rostro en esta pasada -- se deja pasar para que el
+            # intento normal de abajo lo intente tambien y de el mismo mensaje de
+            # siempre en vez de uno distinto segun por donde haya fallado.
+            pass
+
     representation = DeepFace.represent(frame_bgr, model_name=MODEL_NAME, detector_backend=DETECTOR_BACKEND, enforce_detection=True)
     return np.array(representation[0]["embedding"]) if representation else None
 
@@ -593,6 +631,8 @@ def api_reconocer():
         embedding = extraer_embedding(frame)
     except ValueError:
         return jsonify({"ok": False, "mensaje": "No se detectó ningún rostro. Intenta de nuevo."})
+    except SpoofDetectado:
+        return jsonify({"ok": False, "mensaje": "Se detectó una foto o pantalla, no un rostro real."})
     except Exception as e:
         print(f"[api_reconocer] error inesperado procesando el frame: {type(e).__name__}: {e}")
         return jsonify({"ok": False, "mensaje": "No se detectó ningún rostro. Intenta de nuevo."})
@@ -830,6 +870,8 @@ def api_identificar():
         embedding = extraer_embedding(frame)
     except ValueError:
         return jsonify({"ok": False, "mensaje": "No se detectó ningún rostro. Intenta de nuevo."})
+    except SpoofDetectado:
+        return jsonify({"ok": False, "mensaje": "Se detectó una foto o pantalla, no un rostro real."})
     except Exception as e:
         print(f"[api_identificar] error inesperado procesando el frame: {type(e).__name__}: {e}")
         return jsonify({"ok": False, "mensaje": "No se detectó ningún rostro. Intenta de nuevo."})
@@ -1006,7 +1048,11 @@ def api_personal_create():
     try:
         frame = dataurl_a_bgr(imagen_raw)
         embedding = extraer_embedding(frame)
-    except Exception: embedding = None
+    except SpoofDetectado:
+        return jsonify({"ok": False, "mensaje": "Se detectó una foto o pantalla, no un rostro real. Usa la cámara en vivo."}), 400
+    except Exception as e:
+        print(f"[api_personal_create] error real al procesar la foto: {type(e).__name__}: {e}")
+        embedding = None
     if embedding is None: return jsonify({"ok": False, "mensaje": "No se detectó rostro en la foto."}), 400
 
     foto_url = subir_foto_storage(nombre, frame)
@@ -1082,7 +1128,10 @@ def api_personal_update(id):
         try:
             frame = dataurl_a_bgr(imagen_raw)
             embedding = extraer_embedding(frame)
-        except Exception:
+        except SpoofDetectado:
+            return jsonify({"ok": False, "mensaje": "Se detectó una foto o pantalla, no un rostro real. Usa la cámara en vivo."}), 400
+        except Exception as e:
+            print(f"[api_personal_update] error real al procesar la foto: {type(e).__name__}: {e}")
             embedding = None
         if embedding is None:
             return jsonify({"ok": False, "mensaje": "No se detectó rostro en la nueva foto."}), 400
@@ -1870,9 +1919,19 @@ if DEEPFACE_OK:
     try:
         print("Precargando modelo de reconocimiento facial (esto puede tardar unos segundos)...")
         _frame_calentamiento = np.zeros((160, 160, 3), dtype=np.uint8)
+        try:
+            # No importa que no encuentre ninguna cara en un frame negro (por eso
+            # enforce_detection=False) -- lo que se prueba es que el detector en si
+            # cargue bien (modelo disponible, dependencias correctas). Si falla, es
+            # un problema real del detector, no de "no hay rostro".
+            DeepFace.extract_faces(_frame_calentamiento, detector_backend=DETECTOR_BACKEND, enforce_detection=False)
+        except Exception as e_det:
+            print(f"AVISO: el detector '{DETECTOR_BACKEND}' no está disponible en esta instalación "
+                  f"({type(e_det).__name__}: {e_det}); usando 'opencv' como respaldo.")
+            DETECTOR_BACKEND = "opencv"
         DeepFace.represent(_frame_calentamiento, model_name=MODEL_NAME, detector_backend="skip", enforce_detection=False)
         cargar_personal_activo()
-        print("Modelo cargado. El primer registro/reconocimiento ya no debería demorar.")
+        print(f"Modelo cargado (detector: {DETECTOR_BACKEND}). El primer registro/reconocimiento ya no debería demorar.")
     except Exception as e:
         print("No se pudo precargar el modelo (se cargará en la primera solicitud):", e)
 

@@ -271,6 +271,10 @@ async function encenderCamara() {
         scanOverlay.style.display = 'flex';
         btnEncender.disabled = true;
         btnApagar.disabled = false;
+        // Prueba de vida interna (parpadeo / movimiento de cabeza). No muestra nada
+        // en pantalla: solo habilita internamente el envío de frames al backend
+        // una vez confirmada actividad real frente a la cámara.
+        if (typeof Liveness !== 'undefined') Liveness.iniciar(video);
         startScanning();
     } catch (err) {
         log('Error: no se pudo acceder a la cámara.');
@@ -290,6 +294,7 @@ function cleanupCamara() {
     if (scanOverlay) scanOverlay.style.display = 'none';
     if (btnEncender) btnEncender.disabled = false;
     if (btnApagar) btnApagar.disabled = true;
+    if (typeof Liveness !== 'undefined') Liveness.detener();
     stopScanning();
 }
 
@@ -310,11 +315,25 @@ function stopScanning() {
 let _scPendiente = null;
 let _scCooldownUntil = 0;
 
+let _ultimoMensajeLog = null;
+
 function captureAndSend() {
     if (!STATE.stream || !STATE.isScanning) return;
     if (Date.now() < _scCooldownUntil) return;
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    // Gate de prueba de vida: mientras no se detecte parpadeo/movimiento real
+    // frente a la cámara, no se envía ningún frame al backend. Esto es
+    // deliberadamente silencioso -- una foto o pantalla simplemente nunca
+    // avanza, sin ningún aviso que delate el mecanismo.
+    if (typeof Liveness !== 'undefined' && !Liveness.estaVerificado()) return;
+    // Se redimensiona a un ancho maximo de 480px antes de enviar -- DeepFace tarda
+    // notoriamente menos con imagenes chicas, y para reconocimiento facial no hace
+    // falta la resolucion completa de la camara. Esto es lo que mas impacto tiene
+    // en la velocidad de reconocimiento.
+    const ANCHO_MAX_ENVIO = 480;
+    const vw = video.videoWidth, vh = video.videoHeight;
+    const escala = vw > ANCHO_MAX_ENVIO ? ANCHO_MAX_ENVIO / vw : 1;
+    canvas.width = Math.round(vw * escala);
+    canvas.height = Math.round(vh * escala);
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
@@ -331,12 +350,22 @@ function captureAndSend() {
                 return;
             }
             if (data.ok) {
+                _ultimoMensajeLog = null;
                 log(`${data.nombre} — ${data.tipo.toUpperCase()}${data.es_tardanza ? ' · TARDE' : ''}${data.es_hora_extra ? ' · HORA EXTRA' : ''}${data.materia ? ' [' + data.materia + ']' : ''} (${data.confianza}%)`);
                 mostrarCarnetToast(data.nombre, data.tipo, data.foto, data.es_tardanza, data.es_hora_extra);
                 cargarRecientes();
-            } else if (data.mensaje && !data.mensaje.includes('reconocido') && !data.mensaje.toLowerCase().includes('rostro')
-                && !data.mensaje.toLowerCase().includes('no hay personal')) {
-                log(data.mensaje);
+            } else if (data.mensaje) {
+                // Antes se ocultaban por completo los mensajes de "no se detecto rostro"
+                // o "rostro no reconocido" para no llenar la consola mientras no hay
+                // nadie frente a camara. El problema: eso tambien ocultaba el aviso
+                // cuando SI habia alguien y el sistema fallaba en detectarlo, dejando
+                // la sensacion de "no pasa nada". Ahora se muestran, pero solo cuando
+                // el mensaje cambia respecto al anterior -- si se repite identico
+                // (cámara vacía un rato largo) no se vuelve a imprimir cada segundo.
+                if (data.mensaje !== _ultimoMensajeLog) {
+                    log(data.mensaje);
+                    _ultimoMensajeLog = data.mensaje;
+                }
             }
         })
         .catch(() => log('Error de conexión con el servidor.'));
@@ -739,7 +768,7 @@ function renderDpYears() {
         const btn = document.createElement('button');
         btn.className = 'dp-year' + (y === dpState.year ? ' selected' : '') + (y === currentYear ? ' current' : '');
         btn.textContent = y;
-        btn.addEventListener('click', () => { dpState.year = y; renderDpYears(); renderDpWeeks(); });
+        btn.addEventListener('click', e => { e.stopPropagation(); dpState.year = y; renderDpYears(); renderDpWeeks(); });
         container.appendChild(btn);
     }
     $('#dpTitleYear').textContent = dpState.year;
@@ -756,7 +785,7 @@ function renderDpMonths() {
         const isCurrent = i === currentMonth && dpState.year === currentYear;
         btn.className = 'dp-month' + (i === dpState.month ? ' selected' : '') + (isCurrent ? ' current' : '');
         btn.textContent = m;
-        btn.addEventListener('click', () => { dpState.month = i; renderDpMonths(); renderDpWeeks(); });
+        btn.addEventListener('click', e => { e.stopPropagation(); dpState.month = i; renderDpMonths(); renderDpWeeks(); });
         container.appendChild(btn);
     });
 }
@@ -797,7 +826,7 @@ function renderDpWeeks() {
         const isCurrent = i === currentWeekIdx;
         btn.className = 'dp-week' + (i === dpState.week ? ' selected' : '') + (isCurrent ? ' current' : '');
         btn.innerHTML = `<span>Semana ${i + 1}</span><span class="dp-week-dates">${w.mon.getDate()}-${w.sun.getDate()}</span>`;
-        btn.addEventListener('click', () => { dpState.week = i; renderDpWeeks(); });
+        btn.addEventListener('click', e => { e.stopPropagation(); dpState.week = i; renderDpWeeks(); });
         container.appendChild(btn);
     });
 }
@@ -820,9 +849,14 @@ function aplicarDatePicker() {
 }
 
 function irAHoy() {
-    STATE.calOffset = 0;
-    closeDatePicker();
-    renderCalendario();
+    // Solo selecciona hoy en el picker; no aplica hasta pulsar "aplicar"
+    const hoy = new Date();
+    dpState.year = hoy.getFullYear();
+    dpState.month = hoy.getMonth();
+    dpState.week = getWeekOfMonth(hoy);
+    renderDpYears();
+    renderDpMonths();
+    renderDpWeeks();
 }
 
 function initCalendario() {
@@ -837,22 +871,27 @@ function initCalendario() {
     }
     STATE.calendarioListenersListos = true;
 
-    $('#datePickerTrigger')?.addEventListener('click', toggleDatePicker);
-    $('#dpPrevYear')?.addEventListener('click', () => { dpState.year--; renderDpYears(); renderDpWeeks(); });
-    $('#dpNextYear')?.addEventListener('click', () => { dpState.year++; renderDpYears(); renderDpWeeks(); });
-    $('#dpHoy')?.addEventListener('click', irAHoy);
-    $('#dpAplicar')?.addEventListener('click', aplicarDatePicker);
+    $('#datePickerTrigger')?.addEventListener('click', e => {
+        e.stopPropagation();
+        toggleDatePicker();
+    });
+    $('#dpPrevYear')?.addEventListener('click', e => { e.stopPropagation(); dpState.year--; renderDpYears(); renderDpWeeks(); });
+    $('#dpNextYear')?.addEventListener('click', e => { e.stopPropagation(); dpState.year++; renderDpYears(); renderDpWeeks(); });
+    $('#dpHoy')?.addEventListener('click', e => { e.stopPropagation(); irAHoy(); });
+    $('#dpAplicar')?.addEventListener('click', e => { e.stopPropagation(); aplicarDatePicker(); });
+    // Clicks dentro del panel NO cierran; solo backdrop o fuera real
+    $('#datePickerPanel')?.addEventListener('click', e => { e.stopPropagation(); });
+    $('#datePickerBackdrop')?.addEventListener('click', e => { e.stopPropagation(); closeDatePicker(); });
     document.addEventListener('click', e => {
         if (!dpState.open) return;
-        if (e.target && e.target.id === 'datePickerBackdrop') {
-            closeDatePicker();
-            return;
-        }
-        const wrap = $('.date-picker-wrap');
+        const panel = $('#datePickerPanel');
+        const trigger = $('#datePickerTrigger');
         const path = e.composedPath ? e.composedPath() : [];
-        if (wrap && !path.includes(wrap) && e.target.id !== 'datePickerTrigger') closeDatePicker();
+        if (panel && path.includes(panel)) return;
+        if (trigger && path.includes(trigger)) return;
+        if (e.target && (e.target.id === 'datePickerPanel' || e.target.closest?.('#datePickerPanel'))) return;
+        closeDatePicker();
     });
-    $('#datePickerBackdrop')?.addEventListener('click', closeDatePicker);
 
     $('#calPrevWeek')?.addEventListener('click', () => { STATE.calOffset--; renderCalendario(); });
     $('#calNextWeek')?.addEventListener('click', () => { STATE.calOffset++; renderCalendario(); });
@@ -893,14 +932,20 @@ async function renderCalendario() {
 
     const nombresDias = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
     const headerEl = $('#calDiasHeader');
-    headerEl.innerHTML = '<div class="cal-hora-col"></div>';
+    headerEl.innerHTML = '';
+    const spacer = document.createElement('div');
+    spacer.className = 'cal-hora-col';
+    headerEl.appendChild(spacer);
+    const daysWrap = document.createElement('div');
+    daysWrap.className = 'cal-dias-header-days';
     const hoyStr = formatearFecha(new Date());
     dias.forEach((d, i) => {
         const div = document.createElement('div');
         div.className = 'cal-dia-col' + (formatearFecha(d) === hoyStr ? ' today' : '');
         div.textContent = nombresDias[i];
-        headerEl.appendChild(div);
+        daysWrap.appendChild(div);
     });
+    headerEl.appendChild(daysWrap);
 
     await cargarDatosCalendario(lunes, domingo);
 }
@@ -979,7 +1024,9 @@ function renderCalGrid() {
     axis.className = 'tl-axis';
     axis.innerHTML = `<div class="tl-axis-label"></div><div class="tl-axis-hours">${Array.from({ length: 13 }, (_, i) => {
         const h = i * 2;
-        return `<span style="left:${(h / totalH) * 100}%">${h}:00</span>`;
+        const left = (h / totalH) * 100;
+        const tx = h === 0 ? '0' : '-50%';
+        return `<span style="left:${left}%;transform:translateX(${tx})">${h}:00</span>`;
     }).join('')}</div>`;
     body.appendChild(axis);
 
@@ -1428,6 +1475,9 @@ async function initPanelHorario() {
         $('#horarioFilterTipo')?.addEventListener('change', () => renderTablaHorarioPersonal());
         $('#horarioFilterArea')?.addEventListener('change', () => renderTablaHorarioPersonal());
         $('#btnAgregarBloqueHorario')?.addEventListener('click', agregarBloqueDesdeEditor);
+    $('#btnVerVistaSemanal')?.addEventListener('click', abrirVistaSemanalHorario);
+    $('#btnCerrarVistaSemanal')?.addEventListener('click', cerrarVistaSemanalHorario);
+    $('#modalHorarioWeek')?.addEventListener('click', e => { if (e.target === $('#modalHorarioWeek')) cerrarVistaSemanalHorario(); });
         if ($('#horarioSearch')) $('#horarioSearch').dataset.bound = '1';
     }
     try {
@@ -1593,8 +1643,10 @@ async function recargarBloquesEditor(personalId) {
         const res = await fetch(`/api/personal/${personalId}/horarios`);
         if (res.status === 401) { manejarNoAutorizado(null); mostrarLoginAdmin(); return; }
         const bloques = await res.json();
+        STATE._bloquesEditor = bloques || [];
         if (!bloques.length) {
             lista.innerHTML = '<p class="hint-inline">sin bloques. agrega el primero abajo.</p>';
+            renderHorarioWeekGrid([], personalId);
             return;
         }
         const dias = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
@@ -1610,10 +1662,125 @@ async function recargarBloquesEditor(personalId) {
                 </button>
             </div>
         `).join('');
+        renderHorarioWeekGrid(bloques, personalId);
+        if ($('#modalHorarioWeek') && !$('#modalHorarioWeek').classList.contains('hidden')) {
+            renderHorarioWeekGrid(bloques, personalId);
+        }
     } catch (e) {
         lista.innerHTML = '<p class="hint-inline">error al cargar bloques.</p>';
+        renderHorarioWeekGrid([], personalId);
     }
 }
+
+function _minutosHora(h) {
+    if (!h) return null;
+    const p = String(h).split(':');
+    return parseInt(p[0], 10) * 60 + parseInt(p[1] || 0, 10);
+}
+
+/** 07:30:00 → "7:30am" | 14:05 → "2:05pm" */
+function formatearHoraAmPm(h) {
+    if (!h && h !== 0) return '';
+    const p = String(h).split(':');
+    let hr = parseInt(p[0], 10);
+    const min = parseInt(p[1] || '0', 10);
+    if (isNaN(hr)) return String(h);
+    const ampm = hr >= 12 ? 'pm' : 'am';
+    hr = hr % 12;
+    if (hr === 0) hr = 12;
+    return `${hr}:${String(min).padStart(2, '0')}${ampm}`;
+}
+
+function abrirVistaSemanalHorario() {
+    const personalId = $('#horarioEditorPersonalId')?.value;
+    const titulo = $('#horarioEditorTitulo')?.textContent || 'horario';
+    if ($('#horarioWeekTitulo')) $('#horarioWeekTitulo').textContent = titulo.replace(/^horario/, 'vista semanal');
+    if ($('#horarioWeekSub')) $('#horarioWeekSub').textContent = 'todos los bloques del instructor';
+    const modal = $('#modalHorarioWeek');
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    renderHorarioWeekGrid(STATE._bloquesEditor || [], personalId);
+}
+
+function cerrarVistaSemanalHorario() {
+    $('#modalHorarioWeek')?.classList.add('hidden');
+}
+
+function renderHorarioWeekGrid(bloques, personalId) {
+    const grid = $('#horarioWeekGrid');
+    if (!grid) return;
+    const dias = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+    bloques = bloques || [];
+
+    let minIni = null, maxFin = null;
+    bloques.forEach(b => {
+        const ini = _minutosHora(b.hora_inicio);
+        const fin = _minutosHora(b.hora_fin);
+        if (ini != null) minIni = minIni == null ? ini : Math.min(minIni, ini);
+        if (fin != null) maxFin = maxFin == null ? fin : Math.max(maxFin, fin);
+    });
+    let HORA_INI = 7;
+    let HORA_FIN = 22;
+    if (minIni != null) HORA_INI = Math.floor(minIni / 60);
+    if (maxFin != null) {
+        HORA_FIN = Math.min(23, Math.ceil(maxFin / 60));
+        if (HORA_FIN <= HORA_INI) HORA_FIN = HORA_INI + 1;
+    }
+    if (HORA_FIN - HORA_INI < 8) HORA_FIN = Math.min(23, HORA_INI + 10);
+
+    const TOTAL_MIN = (HORA_FIN - HORA_INI) * 60;
+    const PX_POR_MIN = 2.2; // más alto = más legible en pantalla completa
+
+    let hoursHtml = '';
+    for (let h = HORA_INI; h <= HORA_FIN; h++) {
+        const top = (h - HORA_INI) * 60 * PX_POR_MIN;
+        const label = formatearHoraAmPm(`${h}:00`);
+        hoursHtml += `<div class="hw-hour-label" style="top:${top}px">${label}</div>`;
+    }
+
+    let cols = '';
+    for (let d = 0; d < 7; d++) {
+        const delDia = bloques.filter(b => Number(b.dia_semana) === d);
+        let cards = '';
+        delDia.forEach(b => {
+            const ini = _minutosHora(b.hora_inicio);
+            const fin = _minutosHora(b.hora_fin);
+            if (ini == null || fin == null || fin <= ini) return;
+            const top = Math.max(0, (ini - HORA_INI * 60) * PX_POR_MIN);
+            const height = Math.max(72, (fin - ini) * PX_POR_MIN);
+            const materia = escapeHtml(b.materia || 'Clase');
+            const aula = b.aula ? escapeHtml(b.aula) : '';
+            const carrera = b.carrera ? escapeHtml(b.carrera) : '';
+            const sem = (b.semestre != null && b.semestre !== '') ? `Semestre ${escapeHtml(String(b.semestre))}` : '';
+            const tol = (b.tolerancia_min != null) ? `Tol. ${escapeHtml(String(b.tolerancia_min))} min` : '';
+            const modalidad = b.modalidad ? escapeHtml(b.modalidad) : '';
+            const hIni = formatearHoraAmPm(b.hora_inicio);
+            const hFin = formatearHoraAmPm(b.hora_fin);
+            cards += `
+                <div class="hw-glass-card" style="top:${top}px;height:${height}px;" title="${materia}">
+                    <button type="button" class="hw-card-del" onclick="eliminarBloqueHorario('${b.id}', '${personalId}')" title="Eliminar">×</button>
+                    <div class="hw-card-time">${hIni} <span class="hw-arrow">→</span> ${hFin}</div>
+                    <div class="hw-card-title">${materia}</div>
+                    <div class="hw-card-details">
+                        ${aula ? `<span class="hw-chip">${aula}</span>` : ''}
+                        ${carrera ? `<span class="hw-chip">${carrera}</span>` : ''}
+                        ${sem ? `<span class="hw-chip">${sem}</span>` : ''}
+                        ${modalidad ? `<span class="hw-chip">${modalidad}</span>` : ''}
+                        ${tol ? `<span class="hw-chip">${tol}</span>` : ''}
+                    </div>
+                </div>`;
+        });
+        cols += `<div class="hw-day-col"><div class="hw-day-body" style="height:${TOTAL_MIN * PX_POR_MIN}px">${cards}</div></div>`;
+    }
+
+    grid.innerHTML = `
+        <div class="hw-corner"><span>Hora</span></div>
+        <div class="hw-days-head">${dias.map(d => `<div class="hw-day-head-cell">${d}</div>`).join('')}</div>
+        <div class="hw-hours" style="height:${TOTAL_MIN * PX_POR_MIN}px">${hoursHtml}</div>
+        <div class="hw-days">${cols}</div>
+    `;
+}
+
 
 window.eliminarBloqueHorario = async function (bloqueId, personalId) {
     try {
@@ -1884,6 +2051,7 @@ window.abrirEditar = function (id) {
     poblarSelectCarreras($('#editCurso'));
 
     $('#editId').value = p.id;
+    resetEditFotos(p);
     $('#editNombre').value = p.nombre || '';
     $('#editDni').value = p.dni || '';
     $('#editCodigo').value = p.codigo || '';
@@ -2008,6 +2176,116 @@ function aplicarCamposEditPorTipo(tipo) {
     $('#editCargo').required = esPersonal;
 }
 
+
+/* ---------- EDITAR FOTOS (referencia + perfil) ---------- */
+STATE.editFotoRefBase64 = null;
+STATE.editIconBase64 = null;
+STATE.editCamStream = null;
+
+function mostrarEditPreview(elId, src) {
+    const box = $(elId);
+    if (!box) return;
+    if (src) {
+        box.innerHTML = `<img src="${src}" alt="preview">`;
+    } else {
+        box.innerHTML = '<span class="edit-photo-placeholder">sin foto</span>';
+    }
+}
+
+function resetEditFotos(p) {
+    STATE.editFotoRefBase64 = null;
+    STATE.editIconBase64 = null;
+    editCamApagar();
+    const ref = (p && (p.foto_path || p.icono_path)) || null;
+    const perfil = (p && (p.icono_path || p.foto_path)) || null;
+    mostrarEditPreview('#editFotoRefPreview', p ? p.foto_path : null);
+    mostrarEditPreview('#editFotoPerfilPreview', p ? (p.icono_path || p.foto_path) : null);
+    const chk = $('#editUsarComoPerfil');
+    if (chk) chk.checked = false;
+    $('#editUsarComoPerfilWrap')?.classList.add('hidden');
+    $('#btnEditIconClear')?.classList.add('hidden');
+}
+
+async function editCamEncender() {
+    try {
+        if (STATE.editCamStream) return;
+        STATE.editCamStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+        const vid = $('#editVideo');
+        vid.srcObject = STATE.editCamStream;
+        vid.style.display = 'block';
+        $('#editCamPlaceholder').style.display = 'none';
+        $('#btnEditCapturar').disabled = false;
+        $('#btnEditCamOff').disabled = false;
+        $('#btnEditCamOn').disabled = true;
+    } catch (e) {
+        alert('No se pudo acceder a la cámara.');
+    }
+}
+
+function editCamApagar() {
+    if (STATE.editCamStream) {
+        STATE.editCamStream.getTracks().forEach(t => t.stop());
+        STATE.editCamStream = null;
+    }
+    const vid = $('#editVideo');
+    if (vid) { vid.srcObject = null; vid.style.display = 'none'; }
+    if ($('#editCamPlaceholder')) $('#editCamPlaceholder').style.display = 'flex';
+    if ($('#btnEditCapturar')) $('#btnEditCapturar').disabled = true;
+    if ($('#btnEditCamOff')) $('#btnEditCamOff').disabled = true;
+    if ($('#btnEditCamOn')) $('#btnEditCamOn').disabled = false;
+}
+
+function editCamCapturar() {
+    const vid = $('#editVideo');
+    const canv = $('#editCanvas');
+    if (!vid || !STATE.editCamStream) return;
+    canv.width = vid.videoWidth || 640;
+    canv.height = vid.videoHeight || 480;
+    canv.getContext('2d').drawImage(vid, 0, 0);
+    STATE.editFotoRefBase64 = canv.toDataURL('image/jpeg', 0.9);
+    mostrarEditPreview('#editFotoRefPreview', STATE.editFotoRefBase64);
+    $('#editUsarComoPerfilWrap')?.classList.remove('hidden');
+    // si el check está activo, también perfil
+    if ($('#editUsarComoPerfil')?.checked) {
+        STATE.editIconBase64 = STATE.editFotoRefBase64;
+        mostrarEditPreview('#editFotoPerfilPreview', STATE.editIconBase64);
+        $('#btnEditIconClear')?.classList.remove('hidden');
+    }
+    editCamApagar();
+}
+
+$('#btnEditCamOn')?.addEventListener('click', editCamEncender);
+$('#btnEditCamOff')?.addEventListener('click', editCamApagar);
+$('#btnEditCapturar')?.addEventListener('click', editCamCapturar);
+
+$('#editUsarComoPerfil')?.addEventListener('change', e => {
+    if (e.target.checked && STATE.editFotoRefBase64) {
+        STATE.editIconBase64 = STATE.editFotoRefBase64;
+        mostrarEditPreview('#editFotoPerfilPreview', STATE.editIconBase64);
+        $('#btnEditIconClear')?.classList.remove('hidden');
+    }
+});
+
+$('#btnEditIconFile')?.addEventListener('click', () => $('#editIconFile')?.click());
+$('#editIconFile')?.addEventListener('change', e => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+        STATE.editIconBase64 = ev.target.result;
+        mostrarEditPreview('#editFotoPerfilPreview', STATE.editIconBase64);
+        $('#btnEditIconClear')?.classList.remove('hidden');
+    };
+    reader.readAsDataURL(file);
+});
+$('#btnEditIconClear')?.addEventListener('click', () => {
+    STATE.editIconBase64 = null;
+    const p = STATE.personalCache.find(x => String(x.id) === String($('#editId')?.value));
+    mostrarEditPreview('#editFotoPerfilPreview', p ? (p.icono_path || p.foto_path) : null);
+    $('#btnEditIconClear')?.classList.add('hidden');
+    if ($('#editIconFile')) $('#editIconFile').value = '';
+});
+
 $('#btnGuardarEdicion')?.addEventListener('click', async () => {
     const id = $('#editId').value;
     if (!id) return;
@@ -2027,6 +2305,11 @@ $('#btnGuardarEdicion')?.addEventListener('click', async () => {
         semestre: $('#editSemestre').value || null,
         cargo: tipo === 'personal' ? $('#editCargo').value.trim() : null
     };
+    if (STATE.editFotoRefBase64) payload.foto = STATE.editFotoRefBase64;
+    if (STATE.editIconBase64) payload.icono = STATE.editIconBase64;
+    else if (STATE.editFotoRefBase64 && $('#editUsarComoPerfil')?.checked) {
+        payload.icono = STATE.editFotoRefBase64;
+    }
 
     try {
         const res = await fetch(`/api/personal/${id}`, {

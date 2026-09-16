@@ -8,3 +8,5 @@ werkzeug
 tf-keras
 supabase
 python-dotenv
+scikit-learn
+joblib

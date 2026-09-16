@@ -26,6 +26,8 @@ import numpy as np
 from PIL import Image
 from supabase import create_client, Client
 
+import liveness_ml  # clasificador propio de liveness (ver capturar_ejemplos.py / entrenar_liveness.py)
+
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 import warnings
 warnings.filterwarnings("ignore")
@@ -314,39 +316,37 @@ class SpoofDetectado(Exception):
     pass
 
 
-_anti_spoofing_disponible = None  # None = aun no se sabe, True/False una vez comprobado
+_anti_spoofing_disponible = None  # None = aun no se sabe, True/False una vez comprobado (ya no se usa, se deja por compatibilidad)
 
 
 def extraer_embedding(frame_bgr, verificar_vida=True):
     """Extrae el embedding facial. Si verificar_vida=True (por defecto), primero
-    hace una verificación de vida (anti-spoofing) que solo revisa si es un rostro
-    real o una foto/pantalla -- sin reutilizar ese resultado para el embedding en
-    sí. El embedding siempre se calcula con el método simple y ya probado
+    intenta una verificación de vida con el modelo propio de liveness_ml (si ya
+    fue entrenado con capturar_ejemplos.py + entrenar_liveness.py). Mientras no
+    exista modelo_liveness.pkl, esta capa simplemente no hace nada (no bloquea).
+    El embedding siempre se calcula aparte con el método simple y ya probado
     (DeepFace.represent con el detector normal), evitando reprocesar un recorte
     intermedio que en algunos casos no era compatible con el segundo paso y hacía
     fallar el registro en silencio.
     """
-    global _anti_spoofing_disponible
-    if verificar_vida and _anti_spoofing_disponible is not False:
+    if verificar_vida:
         try:
             caras = DeepFace.extract_faces(
-                frame_bgr, detector_backend=DETECTOR_BACKEND,
-                enforce_detection=True, anti_spoofing=True,
+                frame_bgr, detector_backend=DETECTOR_BACKEND, enforce_detection=True,
             )
-            _anti_spoofing_disponible = True
-            if caras and caras[0].get("is_real") is False:
-                raise SpoofDetectado("Se detectó una foto o pantalla, no un rostro real.")
-        except SpoofDetectado:
-            raise
-        except TypeError:
-            _anti_spoofing_disponible = False
-            print("[extraer_embedding] tu versión de DeepFace no soporta anti-spoofing; "
-                  "se sigue reconociendo normal, solo sin esa verificación extra.")
         except ValueError:
-            # No se detecto ningun rostro en esta pasada -- se deja pasar para que el
-            # intento normal de abajo lo intente tambien y de el mismo mensaje de
-            # siempre en vez de uno distinto segun por donde haya fallado.
-            pass
+            # No se detectó ningún rostro en esta pasada -- se deja pasar para que
+            # el intento normal de abajo lo intente también y dé el mismo mensaje
+            # de siempre en vez de uno distinto según por dónde haya fallado.
+            caras = None
+
+        if caras:
+            resultado = liveness_ml.clasificar(caras[0]["face"])
+            if resultado is not None:
+                es_real, confianza = resultado
+                print(f"[liveness-ml] es_real={es_real} confianza={confianza:.3f}")
+                if not es_real:
+                    raise SpoofDetectado("Se detectó una foto o pantalla, no un rostro real.")
 
     representation = DeepFace.represent(frame_bgr, model_name=MODEL_NAME, detector_backend=DETECTOR_BACKEND, enforce_detection=True)
     return np.array(representation[0]["embedding"]) if representation else None

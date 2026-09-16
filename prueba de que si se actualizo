@@ -3,7 +3,11 @@ git add .
 git commit -m "descripción del cambio"
 git push origin main
 
+cd Desktop
+git clone https://github.com/CFXSOFT/FaceTrack.git
+cd FaceTrack
+
 hoy: 12 de septiembre 2026
 hoy: 12 de septiembre 2026
 hoy: 15/09/2026
-asegurar
+hoy:16/09/2026

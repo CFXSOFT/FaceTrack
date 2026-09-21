@@ -167,6 +167,17 @@ app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
 
+@app.errorhandler(500)
+def _error_500(e):
+    """Cualquier ruta /api/... que falle de forma inesperada devuelve JSON
+    en vez de la página genérica de Flask, para que el frontend siempre
+    tenga un mensaje que mostrar en vez de una pantalla en blanco."""
+    print(f"[error 500] {request.path}: {e}")
+    if request.path.startswith("/api/"):
+        return jsonify({"ok": False, "mensaje": "Error interno del servidor. Revisa la consola del servidor."}), 500
+    return e
+
+
 # ==================================================================
 # Utilidades de Storage (fotos) — reemplazan a guardar en disco local
 # ==================================================================
@@ -622,29 +633,13 @@ def revisar_alerta_tardanzas():
             print(f"[alerta email] {e}")
 
 
-@app.route("/api/reconocer", methods=["POST"])
-def api_reconocer():
-    if not DEEPFACE_OK: return jsonify({"ok": False, "mensaje": "DeepFace no está instalado."}), 500
-    data = request.get_json()
-    try:
-        frame = dataurl_a_bgr(data["imagen"])
-        embedding = extraer_embedding(frame)
-    except ValueError:
-        return jsonify({"ok": False, "mensaje": "No se detectó ningún rostro. Intenta de nuevo."})
-    except SpoofDetectado:
-        return jsonify({"ok": False, "mensaje": "Se detectó una foto o pantalla, no un rostro real."})
-    except Exception as e:
-        print(f"[api_reconocer] error inesperado procesando el frame: {type(e).__name__}: {e}")
-        return jsonify({"ok": False, "mensaje": "No se detectó ningún rostro. Intenta de nuevo."})
-    if embedding is None: return jsonify({"ok": False, "mensaje": "No se detectó ningún rostro."})
-
-    lista, matriz, normas = cargar_personal_activo()
-    if not lista: return jsonify({"ok": False, "mensaje": "No hay personal registrado."})
-
+def _registrar_asistencia(p, confianza_frac):
+    """Registra entrada/salida para la persona p (dict con al menos id, nombre,
+    icono_path/foto_path) con una confianza ya calculada (0..1). Usado tanto por
+    el reconocimiento facial (/api/reconocer) como por el check-in con QR
+    (/api/qr/checkin) -- misma lógica de horarios, tardanzas y reescaneo para
+    los dos caminos."""
     cfg = cargar_config()
-    p, distancia = identificar_rostro(embedding, lista, matriz, normas)
-    if p is None or distancia > cfg["umbral_confianza"]: return jsonify({"ok": False, "mensaje": "Rostro no reconocido."})
-
     tiempo_reescaneo = cfg["tiempo_reescaneo"]
     ahora = time.time()
     with _lock_deteccion:
@@ -668,7 +663,7 @@ def api_reconocer():
             "personal_id": p["id"],
             "nombre": p["nombre"],
             "foto": p.get("icono_path") or p.get("foto_path"),
-            "confianza": round((1 - distancia) * 100, 1),
+            "confianza": round(confianza_frac * 100, 1),
             "bloque_siguiente": decision.get("bloque_siguiente"),
             "mensaje": decision.get("mensaje") or "¿Marcar entrada a la siguiente clase?",
         })
@@ -684,7 +679,7 @@ def api_reconocer():
         "id": registro_id,
         "personal_id": p["id"],
         "tipo": tipo,
-        "confianza": round(1 - distancia, 3),
+        "confianza": round(confianza_frac, 3),
         "fecha_hora": fecha_hora_local,
         "es_tardanza": es_tardanza,
         "bloque_id": bloque_id,
@@ -698,15 +693,15 @@ def api_reconocer():
         if "es_tardanza" in msg or "bloque_id" in msg or "materia" in msg or "column" in msg:
             fila_min = {
                 "id": registro_id, "personal_id": p["id"], "tipo": tipo,
-                "confianza": round(1 - distancia, 3), "fecha_hora": fecha_hora_local,
+                "confianza": round(confianza_frac, 3), "fecha_hora": fecha_hora_local,
             }
             try:
                 supabase.table("registros_asistencia").insert(fila_min).execute()
             except Exception as e2:
-                print(f"[api_reconocer] sin conexion a Supabase, guardando localmente: {e2}")
+                print(f"[_registrar_asistencia] sin conexion a Supabase, guardando localmente: {e2}")
                 guardar_registro_pendiente(fila_min)
         else:
-            print(f"[api_reconocer] sin conexion a Supabase, guardando localmente: {e}")
+            print(f"[_registrar_asistencia] sin conexion a Supabase, guardando localmente: {e}")
             guardar_registro_pendiente(fila)
     with _lock_tipo_memoria:
         _ultimo_tipo_memoria[p["id"]] = tipo
@@ -716,18 +711,116 @@ def api_reconocer():
         if es_tardanza:
             revisar_alerta_tardanzas()
     except Exception as e:
-        print(f"[api_reconocer] alerta tardanzas: {e}")
+        print(f"[_registrar_asistencia] alerta tardanzas: {e}")
 
     return jsonify({
         "ok": True,
         "nombre": p["nombre"],
         "tipo": tipo,
-        "confianza": round((1 - distancia) * 100, 1),
+        "confianza": round(confianza_frac * 100, 1),
         "foto": p.get("icono_path") or p.get("foto_path"),
         "es_tardanza": es_tardanza,
         "materia": materia,
         "mensaje_extra": decision.get("mensaje"),
     })
+
+
+@app.route("/api/reconocer", methods=["POST"])
+def api_reconocer():
+    if not DEEPFACE_OK: return jsonify({"ok": False, "mensaje": "DeepFace no está instalado."}), 500
+    data = request.get_json()
+    try:
+        frame = dataurl_a_bgr(data["imagen"])
+        embedding = extraer_embedding(frame)
+    except ValueError:
+        return jsonify({"ok": False, "mensaje": "No se detectó ningún rostro. Intenta de nuevo."})
+    except SpoofDetectado:
+        return jsonify({"ok": False, "mensaje": "Se detectó una foto o pantalla, no un rostro real."})
+    except Exception as e:
+        print(f"[api_reconocer] error inesperado procesando el frame: {type(e).__name__}: {e}")
+        return jsonify({"ok": False, "mensaje": "No se detectó ningún rostro. Intenta de nuevo."})
+    if embedding is None: return jsonify({"ok": False, "mensaje": "No se detectó ningún rostro."})
+
+    lista, matriz, normas = cargar_personal_activo()
+    if not lista: return jsonify({"ok": False, "mensaje": "No hay personal registrado."})
+
+    cfg = cargar_config()
+    p, distancia = identificar_rostro(embedding, lista, matriz, normas)
+    if p is None or distancia > cfg["umbral_confianza"]: return jsonify({"ok": False, "mensaje": "Rostro no reconocido."})
+
+    return _registrar_asistencia(p, 1 - distancia)
+
+
+@app.route("/api/qr/checkin", methods=["POST"])
+def api_qr_checkin():
+    """Check-in a partir del token del carnet QR (ver fotocheck.py). Marca
+    entrada/salida con la misma lógica que el reconocimiento facial, pero sin
+    pasar por la cámara -- pensado para el carnet personal del maestro."""
+    data = request.get_json() or {}
+    token = (data.get("token") or "").strip()
+    if not token:
+        return jsonify({"ok": False, "mensaje": "Código QR inválido."}), 400
+
+    try:
+        res = supabase.table("personal").select(
+            "id,nombre,icono_path,foto_path,activo"
+        ).eq("qr_token", token).limit(1).execute()
+    except Exception as e:
+        msg = str(e).lower()
+        if "column" in msg or "qr_token" in msg:
+            return jsonify({"ok": False, "mensaje": "Falta aplicar la migración de qr_token en Supabase "
+                                                      "(ver fotocheck.py)."}), 500
+        print(f"[api_qr_checkin] error consultando Supabase: {e}")
+        return jsonify({"ok": False, "mensaje": "No se pudo verificar el código en este momento."}), 500
+
+    if not res.data:
+        return jsonify({"ok": False, "mensaje": "Código QR no reconocido."}), 404
+    p = res.data[0]
+    if not p.get("activo", True):
+        return jsonify({"ok": False, "mensaje": "Este registro está inactivo."}), 403
+
+    return _registrar_asistencia(p, 1.0)
+
+
+@app.route("/api/personal/<id>/fotocheck", methods=["GET"])
+@requiere_admin
+def api_personal_fotocheck(id):
+    """Genera (o regenera con el mismo token) el carnet PNG de una persona.
+    Se sirve como imagen simple (sin forzar descarga) para poder mostrarla
+    dentro del panel; el botón "descargar" del modal la guarda del lado del
+    navegador a partir de esa misma imagen."""
+    try:
+        import fotocheck
+    except Exception as e:
+        return jsonify({"ok": False, "mensaje": f"Falta instalar la librería del QR: pip install qrcode[pil] "
+                                                  f"({type(e).__name__}: {e})"}), 500
+
+    try:
+        res = supabase.table("personal").select(
+            "id,nombre,dni,codigo,area,cargo,tipo_personal,curso,semestre,foto_path,icono_path"
+        ).eq("id", id).limit(1).execute()
+    except Exception as e:
+        return jsonify({"ok": False, "mensaje": f"No se pudo consultar Supabase: {e}"}), 500
+    if not res.data:
+        return jsonify({"ok": False, "mensaje": "Personal no encontrado."}), 404
+    persona = res.data[0]
+
+    try:
+        token = fotocheck.asegurar_qr_token(supabase, id)
+    except Exception as e:
+        msg = str(e).lower()
+        if "column" in msg or "qr_token" in msg:
+            return jsonify({"ok": False, "mensaje": "Falta aplicar la migración de qr_token en Supabase: "
+                                                      "ALTER TABLE personal ADD COLUMN IF NOT EXISTS qr_token text UNIQUE;"}), 500
+        return jsonify({"ok": False, "mensaje": f"No se pudo generar el código QR: {e}"}), 500
+
+    try:
+        imagen = fotocheck.generar_imagen_fotocheck(persona, token)
+    except Exception as e:
+        print(f"[api_personal_fotocheck] error generando la imagen: {type(e).__name__}: {e}")
+        return jsonify({"ok": False, "mensaje": f"No se pudo generar la imagen: {e}"}), 500
+
+    return send_file(imagen, mimetype="image/png")
 
 
 @app.route("/api/reconocer/confirmar", methods=["POST"])

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FaceTrack · Panel de Desarrollador</title>
+<link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+  <!-- Login -->
+  <div id="loginBox" class="login-box">
+    <div class="login-card">
+      <h1>Panel de Desarrollador</h1>
+      <p class="muted">Acceso separado del modo admin operativo.</p>
+      <input type="password" id="loginPassword" placeholder="Contraseña" autocomplete="off">
+      <button class="btn btn-primary" onclick="login()">Ingresar</button>
+      <p id="loginError" class="error hidden">Contraseña incorrecta.</p>
+    </div>
+  </div>
+
+  <!-- App -->
+  <div id="app" class="app hidden">
+    <aside class="sidebar">
+      <h2>FaceTrack<span>DEV</span></h2>
+      <nav>
+        <button class="nav-item active" data-vista="dashboard" onclick="irA('dashboard')">📊 Dashboard</button>
+        <button class="nav-item" data-vista="pendientes" onclick="irA('pendientes')">✅ Pendientes</button>
+        <button class="nav-item" data-vista="tablas" onclick="irA('tablas')">🗄️ Datos (tablas)</button>
+      </nav>
+      <button class="btn btn-ghost logout" onclick="logout()">Cerrar sesión</button>
+    </aside>
+
+    <main class="contenido">
+
+      <!-- Vista: Dashboard -->
+      <section id="vista-dashboard" class="vista">
+        <h1>Dashboard</h1>
+        <div class="kpis">
+          <div class="kpi"><span id="kpiActivos">—</span><label>Personal activo</label></div>
+          <div class="kpi"><span id="kpiHoy">—</span><label>Entradas hoy</label></div>
+        </div>
+        <div class="paneles">
+          <div class="panel">
+            <h3>Puntualidad por carrera (últimos 90 días)</h3>
+            <div id="tablaCarrera" class="tabla-mini"></div>
+          </div>
+          <div class="panel">
+            <h3>Tendencia mensual (últimos 12 meses)</h3>
+            <div id="tablaMes" class="tabla-mini"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Vista: Pendientes -->
+      <section id="vista-pendientes" class="vista hidden">
+        <h1>Pendientes</h1>
+        <div class="nueva-fila">
+          <input type="text" id="nuevoPendiente" placeholder="Escribe un pendiente y presiona Enter…"
+                 onkeydown="if(event.key==='Enter') crearPendiente()">
+          <button class="btn btn-primary" onclick="crearPendiente()">Agregar</button>
+        </div>
+        <div id="listaPendientes" class="lista-pendientes"></div>
+      </section>
+
+      <!-- Vista: Tablas (genérico) -->
+      <section id="vista-tablas" class="vista hidden">
+        <h1>Datos</h1>
+        <div class="tablas-layout">
+          <div class="lista-tablas" id="listaTablas"></div>
+          <div class="datos-tabla">
+            <div class="datos-header">
+              <h3 id="tablaActual">Selecciona una tabla</h3>
+              <input type="text" id="buscarFila" placeholder="Buscar…" class="hidden"
+                     onkeydown="if(event.key==='Enter') cargarFilas(1)">
+              <button class="btn btn-primary hidden" id="btnNuevaFila" onclick="abrirModalNuevaFila()">+ Nueva fila</button>
+            </div>
+            <div id="contenedorFilas" class="contenedor-filas"></div>
+            <div id="paginacion" class="paginacion hidden"></div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Modal: editar/crear fila -->
+  <div id="modalFila" class="modal-overlay hidden">
+    <div class="modal-card">
+      <h3 id="modalFilaTitulo">Editar fila</h3>
+      <div id="modalFilaCampos" class="modal-campos"></div>
+      <div class="modal-actions">
+        <button class="btn btn-primary" onclick="guardarFila()">Guardar</button>
+        <button class="btn btn-ghost" onclick="cerrarModal('modalFila')">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

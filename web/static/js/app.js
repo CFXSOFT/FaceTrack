@@ -250,6 +250,7 @@ const video = $('#video');
 const canvas = $('#canvas');
 const placeholder = $('#cameraPlaceholder');
 const scanOverlay = $('#scanOverlay');
+const cameraArea = $('#cameraArea');
 const btnEncender = $('#btnEncender');
 const btnApagar = $('#btnApagar');
 const consoleBox = $('#consoleBox');
@@ -269,6 +270,7 @@ async function encenderCamara() {
         video.style.display = 'block';
         placeholder.style.display = 'none';
         scanOverlay.style.display = 'flex';
+        cameraArea?.classList.add('escaneando');
         btnEncender.disabled = true;
         btnApagar.disabled = false;
         // Prueba de vida interna (parpadeo / movimiento de cabeza). No muestra nada
@@ -292,6 +294,7 @@ function cleanupCamara() {
     if (video) video.style.display = 'none';
     if (placeholder) placeholder.style.display = 'flex';
     if (scanOverlay) scanOverlay.style.display = 'none';
+    cameraArea?.classList.remove('escaneando');
     if (btnEncender) btnEncender.disabled = false;
     if (btnApagar) btnApagar.disabled = true;
     if (typeof Liveness !== 'undefined') Liveness.detener();
@@ -303,12 +306,14 @@ function startScanning() {
     log('Cámara activada. Esperando rostro...');
     const ms = Math.max(1000, Math.round((STATE.config.intervalo_escaneo || 3) * 1000));
     STATE.scanInterval = setInterval(captureAndSend, ms);
+    if (typeof QRCheckin !== 'undefined') QRCheckin.iniciar(video);
 }
 
 function stopScanning() {
     STATE.isScanning = false;
     if (STATE.scanInterval) clearInterval(STATE.scanInterval);
     STATE.scanInterval = null;
+    if (typeof QRCheckin !== 'undefined') QRCheckin.detener();
     log('Cámara detenida.');
 }
 
@@ -563,6 +568,7 @@ STATE.registrosRaw = [];
 STATE.registrosFiltroQ = '';
 STATE.registrosFiltroCargo = '';
 STATE.registrosFiltroCarrera = '';
+STATE.registrosFecha = ''; // solo se usa en la pestaña "historial"
 
 function initRegistros() {
     const tabsBar = $('#registrosTabs');
@@ -596,12 +602,18 @@ function initRegistros() {
         STATE.registrosFiltroCarrera = e.target.value || '';
         renderRegistrosLista();
     });
+    $('#regFecha')?.addEventListener('change', e => {
+        STATE.registrosFecha = e.target.value || '';
+        cargarRegistros('historial');
+    });
     cambiarTabRegistros('hoy');
 }
 
 function cambiarTabRegistros(tab) {
     tabRegistros = tab;
     $$('#registrosTabs .tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+    const inputFecha = $('#regFecha');
+    if (inputFecha) inputFecha.classList.toggle('hidden', tab !== 'historial');
     cargarRegistros(tab);
 }
 
@@ -611,9 +623,13 @@ async function cargarRegistros(tab) {
     try {
         let url;
         if (tab === 'historial') {
-            const fin = formatearFecha(new Date());
-            const ini = formatearFecha(new Date(Date.now() - 30 * 86400000));
-            url = `/api/registros?rango=custom&inicio=${ini}&fin=${fin}`;
+            if (STATE.registrosFecha) {
+                url = `/api/registros?rango=custom&inicio=${STATE.registrosFecha}&fin=${STATE.registrosFecha}`;
+            } else {
+                const fin = formatearFecha(new Date());
+                const ini = formatearFecha(new Date(Date.now() - 30 * 86400000));
+                url = `/api/registros?rango=custom&inicio=${ini}&fin=${fin}`;
+            }
         } else {
             const hoy = formatearFecha(new Date());
             url = `/api/registros?rango=custom&inicio=${hoy}&fin=${hoy}`;
@@ -1931,6 +1947,7 @@ function renderTablaPersonal(data) {
             <td class="col-acciones">
                 <button class="btn-icon-sm" title="Ver" onclick="verDetalle('${p.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></button>
                 <button class="btn-icon-sm" title="Editar" onclick="abrirEditar('${p.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"></path></svg></button>
+                <button class="btn-icon-sm" title="Descargar carnet con QR" onclick="descargarFotocheck('${p.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect><path d="M14 14h3v3h-3zM20 14v3M14 20h3M20 20v.01"></path></svg></button>
                 <button class="btn-icon-sm" title="${p.activo ? 'Desactivar' : 'Activar'}" onclick="toggleActivo('${p.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M5 12l5 5L20 7"></path></svg></button>
                 <button class="btn-icon-sm danger" title="Eliminar" onclick="confirmarEliminar('${p.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
             </td>`;
@@ -1946,6 +1963,48 @@ $('#adminFilterArea')?.addEventListener('change', filtrarPersonal);
 $('#btnRefreshPersonal')?.addEventListener('click', cargarPersonal);
 
 /* Acciones tabla */
+let _fotocheckBlobUrl = null;
+window.descargarFotocheck = async function (id) {
+    const modal = $('#modalFotocheck');
+    const estado = $('#fotocheckEstado');
+    const img = $('#fotocheckImg');
+    const btnDescargar = $('#btnDescargarFotocheck');
+
+    if (_fotocheckBlobUrl) { URL.revokeObjectURL(_fotocheckBlobUrl); _fotocheckBlobUrl = null; }
+    img.classList.add('hidden');
+    btnDescargar.classList.add('hidden');
+    estado.textContent = 'Generando...';
+    modal?.classList.remove('hidden');
+
+    try {
+        const res = await fetch(`/api/personal/${id}/fotocheck`);
+        const tipo = res.headers.get('content-type') || '';
+        if (!res.ok || !tipo.includes('image/png')) {
+            const data = await res.json().catch(() => ({}));
+            estado.textContent = data.mensaje || 'No se pudo generar el fotocheck.';
+            return;
+        }
+        const blob = await res.blob();
+        _fotocheckBlobUrl = URL.createObjectURL(blob);
+        img.src = _fotocheckBlobUrl;
+        img.classList.remove('hidden');
+        btnDescargar.href = _fotocheckBlobUrl;
+        const persona = STATE.personalCache.find(x => String(x.id) === String(id));
+        btnDescargar.download = `fotocheck_${(persona?.nombre || 'personal').replace(/\s+/g, '_')}.png`;
+        btnDescargar.classList.remove('hidden');
+        estado.textContent = '';
+    } catch (e) {
+        estado.textContent = 'Error de conexión al generar el fotocheck.';
+    }
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+    $('#btnCerrarFotocheck')?.addEventListener('click', () => {
+        $('#modalFotocheck')?.classList.add('hidden');
+        if (_fotocheckBlobUrl) { URL.revokeObjectURL(_fotocheckBlobUrl); _fotocheckBlobUrl = null; }
+    });
+});
+
 window.verDetalle = async function (id) {
     const sid = String(id);
     const p = STATE.personalCache.find(x => String(x.id) === sid);

@@ -10,6 +10,7 @@
     <link rel="stylesheet" href="static/css/style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 </head>
 
 <body>
@@ -129,6 +130,14 @@
                         <div class="scan-overlay" id="scanOverlay" style="display:none;">
                             <div class="scan-ring"></div>
                         </div>
+                        <div class="qr-viewfinder" id="qrViewfinder">
+                            <span class="qr-corner qr-tl"></span>
+                            <span class="qr-corner qr-tr"></span>
+                            <span class="qr-corner qr-bl"></span>
+                            <span class="qr-corner qr-br"></span>
+                            <span class="qr-scanline"></span>
+                            <span class="qr-status" id="qrStatus"></span>
+                        </div>
                     </div>
                 </section>
 
@@ -205,6 +214,7 @@
                     <select id="regFilterCarrera">
                         <option value="">filtrar por carrera</option>
                     </select>
+                    <input type="date" id="regFecha" class="reg-fecha-input hidden" title="Filtrar por fecha">
                 </div>
 
                 <div class="registros-list" id="registrosList"></div>
@@ -1065,6 +1075,19 @@
                     </div>
                 </div>
 
+                <!-- MODAL: FOTOCHECK (foto + QR) -->
+                <div class="modal-overlay hidden" id="modalFotocheck">
+                    <div class="modal-card modal-card-fotocheck">
+                        <h3>fotocheck</h3>
+                        <div id="fotocheckEstado" class="fotocheck-estado"></div>
+                        <img id="fotocheckImg" class="fotocheck-preview hidden" alt="Fotocheck">
+                        <div class="modal-actions">
+                            <button class="btn btn-ghost" id="btnCerrarFotocheck">cerrar</button>
+                            <a class="btn btn-primary hidden" id="btnDescargarFotocheck" download="fotocheck.png">descargar</a>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="modal-overlay hidden" id="modalEliminar">
                     <div class="modal-card">
                         <h3>¿eliminar personal?</h3>
@@ -1320,6 +1343,7 @@
     </div>
 
     <script src="static/js/liveness.js"></script>
+    <script src="static/js/qr_checkin.js"></script>
     <script src="static/js/app.js"></script>
 </body>
 

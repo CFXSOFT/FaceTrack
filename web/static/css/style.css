@@ -719,6 +719,95 @@ textarea:focus {
   animation: pulse-ring 2s ease-in-out infinite;
 }
 
+/* ── Visor de QR: marco de escáner con esquinas, línea de barrido y
+   estados (buscando / detectado / confirmado / error) ───────────── */
+.qr-viewfinder {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.camera-area.escaneando .qr-viewfinder {
+  opacity: 1;
+}
+
+.qr-corner {
+  position: absolute;
+  width: 34px;
+  height: 34px;
+  border: 4px solid rgba(255, 255, 255, 0.55);
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+
+.qr-tl { top: 14%; left: 14%; border-right: none; border-bottom: none; border-radius: 8px 0 0 0; }
+.qr-tr { top: 14%; right: 14%; border-left: none; border-bottom: none; border-radius: 0 8px 0 0; }
+.qr-bl { bottom: 14%; left: 14%; border-right: none; border-top: none; border-radius: 0 0 0 8px; }
+.qr-br { bottom: 14%; right: 14%; border-left: none; border-top: none; border-radius: 0 0 8px 0; }
+
+.qr-scanline {
+  position: absolute;
+  left: 16%;
+  right: 16%;
+  top: 14%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #ffffff, transparent);
+  box-shadow: 0 0 8px 1px rgba(255, 255, 255, 0.6);
+  animation: qr-barrido 2.1s ease-in-out infinite;
+}
+
+@keyframes qr-barrido {
+  0%   { top: 14%; opacity: 0.9; }
+  50%  { top: 84%; opacity: 0.9; }
+  51%  { opacity: 0; }
+  52%  { top: 14%; opacity: 0; }
+  60%  { opacity: 0.9; }
+  100% { top: 14%; opacity: 0.9; }
+}
+
+.qr-status {
+  position: absolute;
+  bottom: 8%;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  color: rgba(255, 255, 255, 0.85);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  white-space: nowrap;
+}
+
+.qr-viewfinder.qr-detectado .qr-corner {
+  border-color: #ffffff;
+  transform: scale(0.94);
+}
+.qr-viewfinder.qr-detectado .qr-scanline { animation: none; opacity: 0; }
+.qr-viewfinder.qr-detectado .qr-status { opacity: 1; }
+
+.qr-viewfinder.qr-ok .qr-corner {
+  border-color: #34d399;
+  transform: scale(0.9);
+}
+.qr-viewfinder.qr-ok .qr-status {
+  opacity: 1;
+  background: rgba(16, 90, 60, 0.75);
+  color: #d1fae5;
+}
+
+.qr-viewfinder.qr-error .qr-corner {
+  border-color: #f87171;
+}
+.qr-viewfinder.qr-error .qr-status {
+  opacity: 1;
+  background: rgba(90, 24, 24, 0.75);
+  color: #fecaca;
+}
+
 @keyframes pulse-ring {
 
   0%,
@@ -1054,6 +1143,22 @@ textarea:focus {
   background: var(--bg-input);
   color: var(--text);
   font-size: 13px;
+}
+
+.reg-fecha-input {
+  padding: 9px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-input);
+  color: var(--text);
+  font-size: 13px;
+  color-scheme: dark;
+}
+
+.reg-fecha-input::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  opacity: 0.7;
+  cursor: pointer;
 }
 
 .registros-list {
@@ -1739,6 +1844,26 @@ textarea:focus {
 .modal-card.modal-card-xl {
   width: min(94vw, 780px);
   padding: 0 28px 28px;
+}
+
+.modal-card.modal-card-fotocheck {
+  width: min(92vw, 380px);
+  padding: 0 24px 24px;
+  text-align: center;
+}
+
+.fotocheck-estado {
+  min-height: 24px;
+  color: var(--text-muted);
+  font-size: 13px;
+  margin: 4px 0 12px;
+}
+
+.fotocheck-preview {
+  width: 100%;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-strong);
+  display: block;
 }
 
 .modal-card.detalle-horizontal {

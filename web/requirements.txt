@@ -10,3 +10,4 @@ supabase
 python-dotenv
 scikit-learn
 joblib
+qrcode[pil]
